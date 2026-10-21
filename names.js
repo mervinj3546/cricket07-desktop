@@ -74,7 +74,15 @@ const PAGE_JS = `async (NAMES, mode) => {
   if (mode === 'original') {
     let m; try { m = JSON.parse(await (await (await dir.getFileHandle(MARK)).getFile()).text()); } catch { return 'no-original'; }
     const w = await fh.createWritable({ keepExistingData: true });
-    await setEntry(w, m.off, m.size); await w.close();
+    await setEntry(w, m.off, m.size);
+    // also drop the appended list and restore the archive's length, so the file is byte for byte the
+    // original again (the port's launcher checks file sizes when its game-file list changes)
+    if (m.fileSize && m.fileSize < file.size && m.off + m.size <= m.fileSize) {
+      const t = new DataView(new ArrayBuffer(4)); t.setUint32(0, m.fileSize, true);
+      await w.write({ type: 'write', position: 4, data: t.buffer });
+      await w.truncate(m.fileSize);
+    }
+    await w.close();
     return 'original';
   }
   // mode === 'real'

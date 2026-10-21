@@ -22,6 +22,7 @@
   .row .text { flex: 1; }
   .row b { display: block; font-weight: 600; }
   .row small { color: var(--muted); font-size: 12px; }
+  .hidden { display: none !important; }
   .tag { margin-left: 6px; font-size: 11px; color: #e6c46a; font-weight: 500; }
   /* switch */
   .sw { position: relative; width: 42px; height: 24px; flex: none; }
@@ -72,6 +73,17 @@
     </div>
   </div>
 
+  <h2>Updates</h2>
+  <div class="card">
+    <div class="row"><div class="text"><b>This app</b><small id="app-status">…</small></div>
+      <button class="primary hidden" id="app-download" data-action="update-download">Download</button></div>
+    <div class="row"><div class="text"><b>Game engine</b><small id="engine-status">…</small></div>
+      <button class="primary hidden" id="engine-update">Update Engine</button></div>
+    <label class="row"><div class="text"><b>Check automatically</b><small>Once a day, a little while after the game starts.</small></div>
+      <span class="sw"><input type="checkbox" id="auto-update"><span></span></span></label>
+    <div class="buttons" style="border-top:1px solid var(--line)"><button id="check-now">Check Now</button><small id="checked" style="align-self:center;color:var(--muted)"></small></div>
+  </div>
+
   <footer>
     <span id="keys"></span>
     <button class="primary" data-action="close">Done</button>
@@ -118,6 +130,39 @@
     restart.classList.toggle('show', needsRestart(cur));
   });
   for (const b of document.querySelectorAll('[data-action]')) b.onclick = () => window.c07.action(b.dataset.action);
+
+  // ---- updates
+  const ago = (t) => { if (!t) return 'Not checked yet.'; const m = Math.round((Date.now() - t) / 60000);
+    return 'Last checked ' + (m < 1 ? 'just now' : m < 60 ? m + ' min ago' : m < 1440 ? Math.round(m / 60) + ' h ago' : Math.round(m / 1440) + ' days ago') + '.'; };
+  function showUpdates(u) {
+    const a = document.getElementById('app-status');
+    a.textContent = u.app?.available ? `Version ${u.app.version} is available (you have ${u.appVersion}).`
+      : `Version ${u.appVersion}${u.app ? ', the latest.' : '.'}`;
+    document.getElementById('app-download').classList.toggle('hidden', !u.app?.available);
+    const e = document.getElementById('engine-status');
+    e.textContent = u.engineError ? u.engineError : u.engineBusy ? 'Updating…' : u.engine?.available
+      ? 'Dhaiwat has updated the engine. Updating restarts the game; changed game files then download.'
+      : u.engineUpdatedAt ? 'Up to date (updated ' + new Date(u.engineUpdatedAt).toLocaleDateString() + ').'
+      : u.engine ? 'Up to date.' : 'Not checked yet.';
+    document.getElementById('engine-update').classList.toggle('hidden', !u.engine?.available || u.engineBusy);
+    if (u.engineError) document.getElementById('engine-update').textContent = 'Try Again';
+    document.getElementById('checked').textContent = (u.error ? "Couldn't check (offline?). " : '') + ago(u.checkedAt);
+  }
+  window.c07.get().then((s) => {
+    showUpdates(s.updates);
+    const auto = document.getElementById('auto-update');
+    auto.checked = !!s.values.autoUpdate;
+    auto.onchange = () => window.c07.set('autoUpdate', auto.checked);
+  });
+  document.getElementById('check-now').onclick = async (ev) => {
+    ev.target.disabled = true; document.getElementById('checked').textContent = 'Checking…';
+    showUpdates(await window.c07.action('update-check')); ev.target.disabled = false;
+  };
+  document.getElementById('engine-update').onclick = async (ev) => {
+    ev.target.classList.add('hidden'); document.getElementById('engine-status').textContent = 'Starting…';
+    const u = await window.c07.action('update-engine'); if (u) showUpdates(u);
+  };
+  window.c07.onProgress((t) => { document.getElementById('engine-status').textContent = t; });
   window.addEventListener('keydown', (e) => { if (e.key === 'Escape') window.c07.action('close'); });
 </script>
 </body>

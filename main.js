@@ -4,12 +4,13 @@
 // This app contains no game code or game files. On first launch it loads the port's page and engine
 // from the site, the same way a browser does, and keeps a copy of everything (the page files here, the
 // game files in the page's own storage). After that it plays offline.
-const { app, BrowserWindow, protocol, net, shell, Menu, powerSaveBlocker, ipcMain } = require('electron');
+const { app, BrowserWindow, protocol, net, shell, Menu, powerSaveBlocker, ipcMain, screen } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const saves = require('./saves');
 const { takeScreenshot, showScreenshots } = require('./screenshot');
 const { names } = require('./names');
+const updates = require('./updates');
 
 const REMOTE = 'https://cricket07.dhaiwat.com/';
 const SCHEME = 'c07';
@@ -42,7 +43,7 @@ const ENGINE_DIR = () => userFile('engine');
 // ---------------------------------------------------------------- settings
 
 const SETTINGS = () => userFile('settings.json');
-const DEFAULTS = { realNames: true, fxaa: true, aniso: true, mips: true, sharpen: true, vivid: false, wide: true };
+const DEFAULTS = { realNames: true, fxaa: true, aniso: true, mips: true, sharpen: true, vivid: false, wide: true, autoUpdate: true };
 const settings = () => { try { return { ...DEFAULTS, ...JSON.parse(fs.readFileSync(SETTINGS(), 'utf8')) }; } catch { return { ...DEFAULTS }; } };
 const saveSettings = (s) => fs.writeFileSync(SETTINGS(), JSON.stringify(s, null, 2));
 const gfxQuery = (s) => [s.fxaa ? '' : 'fxaa=0', s.aniso ? '' : 'aniso=0', s.mips ? '' : 'mips=0',
@@ -111,6 +112,7 @@ const FIRST_RUN_OFFLINE = `<!doctype html><meta charset="utf-8"><title>Cricket 0
 After that it works offline.<br>Connect to the internet, then choose Game → Restart Game (${process.platform === 'darwin' ? '⌘R' : 'Ctrl+R'}).</p></div></body>`;
 
 const manifestCache = () => userFile('manifest.json');
+const engineInfo = () => ({ remote: REMOTE, dir: ENGINE_DIR(), manifest: manifestCache() });
 
 async function handle(request) {
   const rel = decodeURIComponent(new URL(request.url).pathname).replace(/^\/+/, '') || 'index.html';
@@ -133,6 +135,10 @@ async function handle(request) {
     const h = new Headers(res.headers);
     for (const [k, v] of Object.entries(ISOLATION)) h.set(k, v);
     return new Response(res.body, { status: res.status, statusText: res.statusText, headers: h });
+  }
+  if (rel === 'blank.html') {
+    // an empty page on the game's origin, for storage work while the game isn't running
+    return new Response('<!doctype html><body style="background:#000">', { headers: { 'Content-Type': 'text/html', ...ISOLATION } });
   }
   if (rel === 'enhance.js') {
     return new Response(fs.readFileSync(path.join(__dirname, 'enhance.js')), { headers: { 'Content-Type': 'text/javascript', ...ISOLATION } });
@@ -250,6 +256,7 @@ function createWindow() {
   });
 
   startGame();
+  autoCheckUpdates();   // once per launch, whether or not the game starts (a newer engine may be the fix)
 }
 
 // ---------------------------------------------------------------- settings window (⌘, / Ctrl+,)
@@ -258,7 +265,7 @@ let settingsWin = null;
 function openSettings() {
   if (settingsWin) { settingsWin.focus(); return; }
   settingsWin = new BrowserWindow({
-    parent: win, modal: true, show: false, width: 560, height: 880, resizable: false,
+    parent: win, modal: true, show: false, width: 560, height: Math.min(1180, screen.getDisplayMatching(win.getBounds()).workAreaSize.height - 60), resizable: false,
     backgroundColor: '#0b130d', title: 'Settings', autoHideMenuBar: true,
     webPreferences: { contextIsolation: true, sandbox: true, preload: path.join(__dirname, 'settings-preload.js') },
   });
@@ -267,7 +274,39 @@ function openSettings() {
   settingsWin.on('closed', () => { settingsWin = null; win?.focus(); });
 }
 
-ipcMain.handle('settings:get', () => ({ values: settings(), applied, platform: process.platform }));
+// ---------------------------------------------------------------- updates
+// Once a day, a while after the game starts, check for a new app release and a newer game engine. A short
+// notice appears in the game the first time an update is found; the details are in Settings.
+let autoCheckTimer = null;
+function autoCheckUpdates() {
+  clearTimeout(autoCheckTimer);
+  autoCheckTimer = setTimeout(async () => {
+    if (!settings().autoUpdate) return;
+    if (updates.due()) await updates.check(engineInfo()).catch(() => {});
+    const notes = updates.unannounced();
+    if (!notes.length || !win) return;
+    const st = updates.readState();
+    const text = notes.includes('app') ? `Version ${st.app.version} of the app is available`
+      : 'A newer game engine is available';
+    win.webContents.executeJavaScript(TOAST_JS(`${text} · ${MAC ? '\u2318,' : 'Ctrl+,'} for details`)).catch(() => {});
+    updates.markAnnounced();
+  }, 30000);
+}
+const TOAST_JS = (text) => `(() => {
+  const d = document.createElement('div');
+  d.textContent = ${JSON.stringify(text)};
+  d.style.cssText = 'position:fixed;left:50%;bottom:28px;transform:translateX(-50%);z-index:9;padding:9px 20px;border-radius:99px;' +
+    'background:rgba(20,60,32,.92);color:#fff;font:14px -apple-system,system-ui,sans-serif;pointer-events:none;opacity:0;transition:opacity .6s';
+  document.body.appendChild(d);
+  setTimeout(() => { d.style.opacity = '1'; }, 50);
+  setTimeout(() => { d.style.opacity = '0'; }, 9000);
+  setTimeout(() => d.remove(), 10000);
+})()`;
+
+let engineBusy = false, engineError = null;
+const updateInfo = () => ({ appVersion: app.getVersion(), ...updates.readState(), engineBusy, engineError });
+
+ipcMain.handle('settings:get', () => ({ values: settings(), applied, platform: process.platform, updates: updateInfo() }));
 ipcMain.handle('settings:set', (_e, key, value) => {
   if (!(key in DEFAULTS)) return;
   saveSettings({ ...settings(), [key]: !!value });
@@ -283,6 +322,29 @@ ipcMain.handle('settings:action', async (_e, name) => {
     case 'backup': return saves.backupNow(settingsWin || win);
     case 'restore': close(); return saves.restore(win, startGame);
     case 'backups': return saves.showBackups();
+    case 'update-check': await updates.check(engineInfo()).catch(() => {}); return updateInfo();
+    case 'update-download': { const u = updates.readState().app?.url; if (u) shell.openExternal(u); return; }
+    case 'update-engine': {
+      if (engineBusy) return updateInfo();
+      engineBusy = true; engineError = null;
+      const say = (t) => settingsWin?.webContents.send('update-progress', t);
+      try {
+        await updates.updateEngine(engineInfo(), [...ENGINE_FILES], say);
+        say('Done. Restarting the game…');
+        await new Promise((r) => setTimeout(r, 800));
+        close();
+        // With the game stopped, put the game data back to the exact original (real names are re-applied as
+        // the game starts). Otherwise its changed size makes the new launcher download it all again.
+        if (!win.webContents.isCrashed()) win.webContents.forcefullyCrashRenderer();
+        await win.loadURL(`${SCHEME}://app/blank.html`).catch(() => {});
+        await names(win, 'original').catch(() => {});
+        startGame();
+      } catch (err) {
+        engineError = `The engine couldn't be updated: ${err.message}`;
+        say(engineError);
+      } finally { engineBusy = false; }
+      return updateInfo();
+    }
   }
 });
 
