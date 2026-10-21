@@ -420,3 +420,5 @@ app.whenReady().then(() => {
 // The game keeps worker threads busy, which can stall a normal quit; end the app right away instead.
 app.on('window-all-closed', () => app.exit(0));
 app.on('before-quit', () => app.exit(0));
+// quit requests from scripts and system tools (Electron ignores these signals otherwise)
+for (const sig of ['SIGTERM', 'SIGINT', 'SIGHUP']) process.on(sig, () => app.exit(0));

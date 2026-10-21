@@ -25,6 +25,13 @@ in-app text simple.
 Storage under `userData`: `engine/` (page + engine), `manifest.json` (game-file list), `settings.json`, `updates.json`; game files in OPFS (`c07game`).
 Skip intro = rename OPFS `Data/eaep.vp6` → `eaep.vp6.skip` before the game starts.
 
+## Lessons
+- Mip levels: an upscaled texture's level 1 must be the game's texture unchanged (it's what's drawn at normal
+  size); distant levels raise alpha only at cut-out edges. Otherwise see-through shading gets heavier (1.4.1 fix).
+- Measure picture changes, don't eyeball them: menus and match conditions are random between runs, so compare
+  inside one session (live toggles, or read textures back from the GPU) or on a paused frame.
+- Post effects must not shift brightness (most of this game's picture is below mid-grey, so a contrast boost darkens it).
+
 ## Releasing
 1. Bump `version` in `package.json`, commit, push.
 2. `npm run dist` (Mac zips) — `npm run dist:win` is built by CI; build it locally only if needed.
