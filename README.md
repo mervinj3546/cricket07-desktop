@@ -5,10 +5,16 @@ browser port of the game ([cricket07.dhaiwat.com](https://cricket07.dhaiwat.com)
 [source](https://github.com/Dhaiwat10/cricket07-browser)).
 
 Dhaiwat did the hard part: he translated the original 2006 Windows game to run in a browser, with
-graphics rebuilt on WebGPU. This app wraps his port in a Mac window so it works without a browser and
-without internet, and adds a few things for playing on a Mac.
+graphics rebuilt on WebGPU. This app wraps his port in a desktop window so it works without a browser and
+without internet, and adds real player names, widescreen and a few picture improvements.
 
-<p align="center"><img src="build-res/icon.png" width="160" alt=""></p>
+![A match at Kandy in widescreen](docs/stadium.jpg)
+
+| Real player names | Settings (⌘,) |
+|---|---|
+| ![Pakistan's squad with real names: Shahid Afridi, Inzamam-ul-Haq, Shoaib Akhtar](docs/squad.jpg) | <img src="docs/settings.png" width="300" alt="The Settings window"> |
+
+![Batting view, with Shahid Afridi on the scoreboard](docs/batting.jpg)
 
 ## Download
 
@@ -23,24 +29,30 @@ without internet, and adds a few things for playing on a Mac.
 same release and run it. Windows may show "Windows protected your PC" because the app isn't signed:
 click **More info → Run anyway**. Needs Windows 10 or 11 with a graphics card that supports DirectX 12.
 
-**The first launch needs internet.** It downloads the game from Dhaiwat's site (about 1.2 GB, a few
-minutes), the same way the website does. After that it plays fully offline.
+**The first launch needs internet.** It downloads the game from Dhaiwat's site, the same way the website
+does. You choose **Regular** (the whole game, about 740 MB) or **Lite** (no commentary and one song, about
+440 MB). It takes a minute or two on a fast connection. After that it plays fully offline.
 
 ## What it adds
 
-- **Offline play.** The game and the page that runs it are kept on your Mac after the first launch.
-- **Straight into the game.** Opens full screen and starts solo play, with the picture filling the screen.
+- **Offline play.** The game and the page that runs it are kept on your computer after the first launch.
+- **Straight into the game.** Opens full screen and starts solo play.
+- **Settings window.** Press **⌘,** (Ctrl+, on Windows) at any time, even mid-match, to switch any of the
+  options below on or off.
 - **Real player names.** The game shows made-up names for players EA didn't license (S.Tendehar for
   Sachin Tendulkar, D.Dhenier for MS Dhoni). The game's own data has a second copy of the player list
   with the real names, and the app uses it for 394 players across India, Pakistan, West Indies, Sri Lanka,
-  Zimbabwe, Bangladesh, Kenya, Australia, New Zealand and more. Turn it off in **Game → Real Player Names**.
-  Ireland and Bermuda keep placeholder names, since the game has no real ones for them; rename them in
-  the game's player editor.
-- **Save backups.** Your saves are copied to `~/Documents/Cricket 07 for Mac Saves` at each launch
-  (the newest 10 are kept). Back up or restore any time from the **Saves** menu.
-- **Screenshots.** **Game → Take Screenshot** (⌘⇧S, or Ctrl+Shift+S on Windows) saves the game picture
-  to `Pictures/<app name> Screenshots`. The usual system screenshot keys may not capture the game.
-- **Mac comforts.** Quitting from the game's menu or with ⌘Q closes the app straight away. The display
+  Zimbabwe, Bangladesh, Kenya, Australia, New Zealand and more. Ireland and Bermuda keep placeholder names,
+  since the game has no real ones for them; rename them in the game's player editor.
+- **Widescreen.** Shows more of the ground to the sides instead of stretching the 4:3 picture, so players
+  keep their proportions. Menus and the scoreboard fill the screen as before.
+- **A cleaner picture.** Smooth edges (anti-aliasing), mild sharpening, sharper textures at an angle, and
+  less shimmer on distant crowds, stands and boards. Optional vivid colours. The game still runs at 60 fps.
+- **Screenshots.** **⌘⇧S** (Ctrl+Shift+S) saves the game picture to `Pictures/<app name> Screenshots`.
+  The usual system screenshot keys may not capture the game.
+- **Save backups.** Your saves are copied to `Documents/<app name> Saves` at each launch (the newest 10
+  are kept). Back up or restore any time from Settings.
+- **Desktop comforts.** Quitting from the game's menu or with ⌘Q closes the app straight away. The display
   stays awake while you play with a controller, and the game mutes when you switch to another app.
 
 ## Tips
@@ -48,8 +60,8 @@ minutes), the same way the website does. After that it plays fully offline.
 - **Keep your settings:** the game only remembers settings such as difficulty when you save your
   profile: **My Cricket → Load / Save → Save**.
 - **Controls:** a PlayStation or Xbox controller works. On the keyboard: arrows to move, **S** to select,
-  **W** to go back, **Esc** to pause. ⌘K shows the full keyboard controls.
-- **Full screen:** ⌃⌘F switches between full screen and a window.
+  **W** to go back, **Esc** to pause. **⌘K** shows the full keyboard controls.
+- **Full screen:** ⌃⌘F (F11 on Windows) switches between full screen and a window.
 
 ## Not included
 
@@ -71,6 +83,6 @@ npm run dist:win   # build the Windows installer into dist/
 - [Stephan Cilliers](https://github.com/stephancill): deterministic scheduler, netplay and controller
   support in the port.
 - Cricket 07 and EA Sports are trademarks of Electronic Arts. This is a fan project, not affiliated with
-  or endorsed by Electronic Arts or by Dhaiwat.
+  or endorsed by Electronic Arts or by Dhaiwat. Screenshots show the game running in this app.
 
 MIT licensed (this app's code only).

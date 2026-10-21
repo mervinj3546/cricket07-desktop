@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'unsafe-inline'; script-src 'unsafe-inline'">
+<title>Settings</title>
+<style>
+  :root {
+    --bg: #0b130d; --panel: #111c14; --line: rgba(255, 255, 255, .09); --fg: #eef4ef; --muted: #9fb3a5;
+    --accent: #34b866; --accent-hi: #45cf79; --off: #3a4a3e;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--fg); font: 14px/1.45 -apple-system, system-ui, sans-serif;
+    -webkit-user-select: none; user-select: none; overflow-y: auto; }
+  main { padding: 22px 24px 18px; }
+  h1 { margin: 0 0 2px; font-size: 18px; }
+  .sub { margin: 0 0 18px; color: var(--muted); font-size: 13px; }
+  h2 { margin: 18px 0 6px; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; }
+  .row { display: flex; align-items: center; gap: 14px; padding: 11px 14px; border-top: 1px solid var(--line); }
+  .row:first-child { border-top: 0; }
+  .row .text { flex: 1; }
+  .row b { display: block; font-weight: 600; }
+  .row small { color: var(--muted); font-size: 12px; }
+  .tag { margin-left: 6px; font-size: 11px; color: #e6c46a; font-weight: 500; }
+  /* switch */
+  .sw { position: relative; width: 42px; height: 24px; flex: none; }
+  .sw input { opacity: 0; width: 0; height: 0; position: absolute; }
+  .sw span { position: absolute; inset: 0; border-radius: 99px; background: var(--off); transition: background .15s; cursor: pointer; }
+  .sw span::after { content: ""; position: absolute; top: 3px; left: 3px; width: 18px; height: 18px; border-radius: 50%;
+    background: #fff; transition: transform .15s; }
+  .sw input:checked + span { background: var(--accent); }
+  .sw input:checked + span::after { transform: translateX(18px); }
+  .sw input:focus-visible + span { outline: 2px solid var(--accent-hi); outline-offset: 2px; }
+  button { font: inherit; cursor: pointer; border-radius: 9px; padding: 7px 14px; border: 1px solid var(--line);
+    background: #1a2a1e; color: var(--fg); }
+  button:hover { background: #22372a; }
+  button.primary { background: var(--accent); border-color: transparent; color: #04110a; font-weight: 700; }
+  button.primary:hover { background: var(--accent-hi); }
+  .buttons { display: flex; flex-wrap: wrap; gap: 8px; padding: 12px 14px; }
+  #restart { display: none; align-items: center; gap: 12px; margin-top: 14px; padding: 10px 14px; border-radius: 12px;
+    background: rgba(230, 196, 106, .12); border: 1px solid rgba(230, 196, 106, .35); }
+  #restart.show { display: flex; }
+  #restart span { flex: 1; font-size: 13px; }
+  footer { display: flex; justify-content: space-between; align-items: center; margin-top: 16px; color: var(--muted); font-size: 12px; }
+  kbd { font: 600 11px ui-monospace, Menlo, monospace; padding: 1px 5px; border-radius: 4px; border: 1px solid var(--line); background: #1a2a1e; color: var(--fg); }
+</style>
+</head>
+<body>
+<main>
+  <h1>Settings</h1>
+  <p class="sub">Changes are saved straight away.</p>
+
+  <h2>Players</h2>
+  <div class="card" id="players"></div>
+
+  <h2>Picture</h2>
+  <div class="card" id="graphics"></div>
+  <div id="restart"><span>Some changes apply after the game restarts. Save your profile first if you changed anything in the game.</span>
+    <button class="primary" data-action="restart">Restart Game</button></div>
+
+  <h2>Screenshots &amp; saves</h2>
+  <div class="card">
+    <div class="buttons">
+      <button data-action="screenshot">Take Screenshot</button>
+      <button data-action="screenshots">Show Screenshots</button>
+    </div>
+    <div class="buttons" style="border-top:1px solid var(--line)">
+      <button data-action="backup">Back Up Saves Now</button>
+      <button data-action="restore">Restore Saves…</button>
+      <button data-action="backups">Show Backups</button>
+    </div>
+  </div>
+
+  <footer>
+    <span id="keys"></span>
+    <button class="primary" data-action="close">Done</button>
+  </footer>
+</main>
+<script>
+  const PLAYERS = [
+    ['realNames', 'Real player names', 'Real names for the 394 players the game gave made-up names (S.Tendehar becomes S.Tendulkar).', true],
+  ];
+  const OPTIONS = [
+    ['wide', 'Widescreen', 'Shows more of the ground instead of stretching the picture.', true],
+    ['fxaa', 'Smooth edges', 'Softens jagged edges.', false],
+    ['sharpen', 'Sharpen', 'Makes the picture a little crisper.', false],
+    ['vivid', 'Vivid colours', 'Richer greens and reds.', false],
+    ['aniso', 'Sharper textures', 'Keeps the pitch and outfield crisp at an angle.', true],
+    ['mips', 'Less shimmer', 'Stops distant crowds and boards flickering.', true],
+  ];
+  const box = document.getElementById('graphics');
+  const restart = document.getElementById('restart');
+  let initial = {};
+  const needsRestart = (cur) => [...PLAYERS, ...OPTIONS].some(([k, , , r]) => r && cur[k] !== initial[k]);
+  window.c07.get().then((s) => {
+    initial = { ...s.applied };
+    const cur = { ...s.values };
+    const mac = s.platform === 'darwin';
+    document.getElementById('keys').innerHTML = mac
+      ? '<kbd>⌘,</kbd> settings · <kbd>⌘⇧S</kbd> screenshot · <kbd>⌘K</kbd> keyboard help · <kbd>⌃⌘F</kbd> full screen'
+      : '<kbd>Ctrl+,</kbd> settings · <kbd>Ctrl+Shift+S</kbd> screenshot · <kbd>Ctrl+K</kbd> keyboard help · <kbd>F11</kbd> full screen';
+    for (const [list, target] of [[PLAYERS, document.getElementById('players')], [OPTIONS, box]])
+    for (const [key, title, hint, next] of list) {
+      const row = document.createElement('label');
+      row.className = 'row';
+      row.innerHTML = `<div class="text"><b>${title}${next ? '<span class="tag">restart</span>' : ''}</b><small>${hint}</small></div>
+        <span class="sw"><input type="checkbox"><span></span></span>`;
+      const input = row.querySelector('input');
+      input.checked = !!cur[key];
+      input.onchange = () => {
+        cur[key] = input.checked;
+        window.c07.set(key, input.checked);
+        restart.classList.toggle('show', needsRestart(cur));
+      };
+      target.appendChild(row);
+    }
+    restart.classList.toggle('show', needsRestart(cur));
+  });
+  for (const b of document.querySelectorAll('[data-action]')) b.onclick = () => window.c07.action(b.dataset.action);
+  window.addEventListener('keydown', (e) => { if (e.key === 'Escape') window.c07.action('close'); });
+</script>
+</body>
+</html>

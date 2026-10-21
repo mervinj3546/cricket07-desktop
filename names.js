@@ -85,10 +85,20 @@ const PAGE_JS = `async (NAMES, mode) => {
     out.set(b, i * REC + 8);
   }
   const packed = pack(out);
-  const mw = await (await dir.getFileHandle(MARK, { create: true })).createWritable();
-  await mw.write(JSON.stringify({ off, size })); await mw.close();
-  const end = file.size, at = end + ((16 - end % 16) % 16), total = at + packed.length;
+  // The marker remembers the original list and the archive's original length. The new list always goes right
+  // after that length, replacing any list written before, so switching names on and off doesn't grow the file.
+  let m = null;
+  try { m = JSON.parse(await (await (await dir.getFileHandle(MARK)).getFile()).text()); } catch {}
+  if (!m || !m.fileSize) {
+    // first time (or a marker from an older version of the app): the names are original now, so the current
+    // entry is the original list, and new lists go after everything already in the file
+    m = { off, size, fileSize: file.size };
+    const mw = await (await dir.getFileHandle(MARK, { create: true })).createWritable();
+    await mw.write(JSON.stringify(m)); await mw.close();
+  }
+  const end = m.fileSize, at = end + ((16 - end % 16) % 16), total = at + packed.length;
   const w = await fh.createWritable({ keepExistingData: true });
+  await w.truncate(at);
   await w.write({ type: 'write', position: at, data: packed });
   await setEntry(w, at, packed.length);
   const t = new DataView(new ArrayBuffer(4)); t.setUint32(0, total, true);

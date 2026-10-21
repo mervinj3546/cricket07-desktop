@@ -4,12 +4,12 @@
 // This app contains no game code or game files. On first launch it loads the port's page and engine
 // from the site, the same way a browser does, and keeps a copy of everything (the page files here, the
 // game files in the page's own storage). After that it plays offline.
-const { app, BrowserWindow, protocol, net, shell, Menu, powerSaveBlocker, dialog } = require('electron');
+const { app, BrowserWindow, protocol, net, shell, Menu, powerSaveBlocker, ipcMain } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const saves = require('./saves');
 const { takeScreenshot, showScreenshots } = require('./screenshot');
-const { names, COUNT } = require('./names');
+const { names } = require('./names');
 
 const REMOTE = 'https://cricket07.dhaiwat.com/';
 const SCHEME = 'c07';
@@ -42,10 +42,35 @@ const ENGINE_DIR = () => userFile('engine');
 // ---------------------------------------------------------------- settings
 
 const SETTINGS = () => userFile('settings.json');
-const settings = () => { try { return { realNames: true, ...JSON.parse(fs.readFileSync(SETTINGS(), 'utf8')) }; } catch { return { realNames: true }; } };
+const DEFAULTS = { realNames: true, fxaa: true, aniso: true, mips: true, sharpen: true, vivid: false, wide: true };
+const settings = () => { try { return { ...DEFAULTS, ...JSON.parse(fs.readFileSync(SETTINGS(), 'utf8')) }; } catch { return { ...DEFAULTS }; } };
 const saveSettings = (s) => fs.writeFileSync(SETTINGS(), JSON.stringify(s, null, 2));
+const gfxQuery = (s) => [s.fxaa ? '' : 'fxaa=0', s.aniso ? '' : 'aniso=0', s.mips ? '' : 'mips=0',
+  s.sharpen ? '' : 'sharpen=0', s.vivid ? 'vivid=1' : '', s.wide ? 'wide=1' : ''].filter(Boolean).join('&');
+// settings that switch while the game runs (the others apply when the game starts)
+const LIVE = {
+  fxaa: (v) => `window.c07Enhance.fxaa = ${v}`,
+  sharpen: (v) => `window.c07Enhance.sharpen = ${v ? 0.5 : 0}`,
+  vivid: (v) => `window.c07Enhance.vivid = ${v}`,
+};
+const MAC = process.platform === 'darwin';
 
 // ---------------------------------------------------------------- serving the page
+
+// The game fills the window and starts by itself: from the first frame there is only a black screen, plus a
+// short status line (and progress bar) while the game files download on the first launch.
+const PAGE_CSS = `
+  html, body { background: #000 !important; }
+  main { padding: 0 !important; gap: 0 !important; }
+  #stage { position: fixed !important; inset: 0 !important; width: 100vw !important; height: 100vh !important;
+    aspect-ratio: auto !important; border-radius: 0 !important; box-shadow: none !important; }
+  #panel { background: #000 !important; }
+  #view-loading .brand, #view-home, #view-online, #view-lobby, .credit, #kbd-show, #fs, #fstip, #kbd { display: none !important; }
+  body.kbd-on #kbd { display: block !important; z-index: 5; }
+  #view-loading { animation: none !important; }
+  #status { color: #9fb3a5 !important; font-size: 14px; }
+  canvas, canvas:focus { outline: none !important; }
+`;
 
 // Small changes to the port's page for a desktop window. Each is skipped if the page has changed.
 function adapt(rel, buf) {
@@ -53,11 +78,16 @@ function adapt(rel, buf) {
   if (rel === 'index.html') {
     // no web analytics in the app
     text = text.replace(/<!-- Cloudflare Web Analytics[\s\S]*?<\/script>\n?/, '');
+    // graphics enhancements (enhance.js, part of this app) load before the port's scripts
+    text = text.replace('<script src="netplay.js"></script>', '<script src="enhance.js"></script>\n<script src="netplay.js"></script>');
+    // the app's layout is part of the page, so the very first frame is already right (black, no website layout)
+    text = text.replace('</head>', `<style id="desktop-app">${PAGE_CSS}</style>\n</head>`);
   } else if (rel === 'c07.js') {
-    // keep the 4:3 picture and let the window stretch it to fill the screen (no black bars)
+    // keep the 4:3 picture and let the window stretch it over the screen (no black bars), unless widescreen
+    // (enhance.js) is on, which draws the scene at the window's own shape
     text = text.replace(
       /canvas\.width = Math\.max\(640, Math\.round\(r\.width \* dpr\)\);\s*canvas\.height = Math\.max\(480, Math\.round\(r\.height \* dpr\)\);/,
-      'canvas.height = Math.max(480, Math.round(r.height * dpr));\n  canvas.width = Math.max(640, Math.round(canvas.height * 4 / 3));');
+      'canvas.height = Math.max(480, Math.round(r.height * dpr));\n  canvas.width = window.c07Enhance?.wide ? Math.max(640, Math.round(r.width * dpr)) : Math.max(640, Math.round(canvas.height * 4 / 3));');
   } else return buf;
   return Buffer.from(text);
 }
@@ -104,6 +134,9 @@ async function handle(request) {
     for (const [k, v] of Object.entries(ISOLATION)) h.set(k, v);
     return new Response(res.body, { status: res.status, statusText: res.statusText, headers: h });
   }
+  if (rel === 'enhance.js') {
+    return new Response(fs.readFileSync(path.join(__dirname, 'enhance.js')), { headers: { 'Content-Type': 'text/javascript', ...ISOLATION } });
+  }
   if (!ENGINE_FILES.has(rel)) return new Response('Not found', { status: 404, headers: ISOLATION });
   try {
     const body = adapt(rel, await engineFile(rel));
@@ -116,20 +149,8 @@ async function handle(request) {
 
 // ---------------------------------------------------------------- window
 
-// The game fills the window: no rounded stage, credit line or side panel (the keyboard panel is in View).
-const APP_CSS = `
-  main { padding: 0 !important; gap: 0 !important; }
-  #stage { position: fixed !important; inset: 0 !important; width: 100vw !important; height: 100vh !important;
-    aspect-ratio: auto !important; border-radius: 0 !important; box-shadow: none !important; }
-  .credit, #kbd-show, #fs, #fstip { display: none !important; }
-  canvas, canvas:focus { outline: none !important; }
-  #kbd { display: none !important; }
-  body.kbd-on #kbd { display: block !important; z-index: 5; }
-  /* the app starts solo play itself, so the Solo / Multiplayer screens are never shown */
-  #view-home, #view-online, #view-lobby { display: none !important; }
-`;
-
 let win = null;
+let applied = {};   // the settings the running game started with
 
 // Loads the page and waits until the game files are in place (the first launch downloads them),
 // then runs any pending tasks and starts solo play, skipping the Solo / Multiplayer screen.
@@ -138,7 +159,8 @@ async function startGame(beforePlay) {
     // a running game keeps the page too busy to navigate away, so end its process first
     if (win.webContents.getURL()) win.webContents.forcefullyCrashRenderer();
   }
-  await win.loadURL(START_URL).catch(() => {});
+  applied = settings();
+  await win.loadURL(START_URL + '?' + gfxQuery(applied)).catch(() => {});
   for (;;) {
     const state = await win.webContents.executeJavaScript(`(() => {
       const el = document.getElementById('view-home');
@@ -157,7 +179,20 @@ async function startGame(beforePlay) {
   await applyNamesSetting();
   if (beforePlay) await beforePlay();
   await win.webContents.executeJavaScript(`document.getElementById('play').click()`);
+  win.webContents.executeJavaScript(HINT_JS).catch(() => {});
 }
+
+// A short hint once the game starts, since the menu bar is hidden in full screen
+const HINT_JS = `(() => {
+  const d = document.createElement('div');
+  d.textContent = 'Press ${MAC ? '\u2318,' : 'Ctrl+,'} for settings';
+  d.style.cssText = 'position:fixed;left:50%;bottom:28px;transform:translateX(-50%);z-index:9;padding:8px 18px;border-radius:99px;' +
+    'background:rgba(0,0,0,.7);color:#fff;font:14px -apple-system,system-ui,sans-serif;pointer-events:none;opacity:0;transition:opacity .6s';
+  document.body.appendChild(d);
+  setTimeout(() => { d.style.opacity = '1'; }, 11000);   // after the intro logos
+  setTimeout(() => { d.style.opacity = '0'; }, 18000);
+  setTimeout(() => d.remove(), 19000);
+})()`;
 
 async function applyNamesSetting() {
   try {
@@ -175,7 +210,6 @@ function createWindow() {
     backgroundColor: '#000000', title: 'Cricket 07',
     webPreferences: { contextIsolation: true, sandbox: true, backgroundThrottling: false },
   });
-  win.webContents.on('dom-ready', () => win.webContents.insertCSS(APP_CSS));
   win.webContents.setWindowOpenHandler(({ url }) => { shell.openExternal(url); return { action: 'deny' }; });
 
   // Quit in the game's own menu stops the game but leaves its last frame on screen; close the app instead.
@@ -195,37 +229,89 @@ function createWindow() {
   win.once('ready-to-show', () => setActive(win.isFocused()));
   win.on('close', () => app.exit(0));
 
+  // The game takes every key it knows (and cancels it), so menu shortcuts never fire while it has focus.
+  // Catch them here first, before the game sees them.
+  win.webContents.on('before-input-event', (event, input) => {
+    if (input.type !== 'keyDown' || input.alt) return;
+    if (!MAC && input.key === 'F11') { event.preventDefault(); win.setFullScreen(!win.isFullScreen()); return; }
+    if (!(MAC ? input.meta : input.control)) return;
+    const k = input.key.toLowerCase();
+    const run = {
+      ',': () => openSettings(),
+      's': input.shift ? () => takeScreenshot(win) : null,
+      'k': () => win.webContents.executeJavaScript(`document.body.classList.toggle('kbd-on')`),
+      'r': () => startGame(),
+      'f': MAC && input.control ? () => win.setFullScreen(!win.isFullScreen()) : null,
+      'q': () => app.exit(0),
+      'h': MAC ? () => app.hide() : null,
+      'm': () => win.minimize(),
+    }[k];
+    if (run) { event.preventDefault(); run(); }
+  });
+
   startGame();
 }
 
-async function toggleRealNames(item) {
-  const s = settings();
-  s.realNames = item.checked;
-  saveSettings(s);
-  await dialog.showMessageBox(win, {
-    message: item.checked ? 'Real player names on' : 'Original game names on',
-    detail: 'The game restarts to apply this. Save your profile first if you changed any settings (My Cricket → Load / Save).',
+// ---------------------------------------------------------------- settings window (⌘, / Ctrl+,)
+// A sheet over the game window, so it works in full screen where the menu bar is hidden.
+let settingsWin = null;
+function openSettings() {
+  if (settingsWin) { settingsWin.focus(); return; }
+  settingsWin = new BrowserWindow({
+    parent: win, modal: true, show: false, width: 560, height: 880, resizable: false,
+    backgroundColor: '#0b130d', title: 'Settings', autoHideMenuBar: true,
+    webPreferences: { contextIsolation: true, sandbox: true, preload: path.join(__dirname, 'settings-preload.js') },
   });
-  startGame();
+  settingsWin.loadFile(path.join(__dirname, 'settings.html'));
+  settingsWin.once('ready-to-show', () => settingsWin.show());
+  settingsWin.on('closed', () => { settingsWin = null; win?.focus(); });
 }
+
+ipcMain.handle('settings:get', () => ({ values: settings(), applied, platform: process.platform }));
+ipcMain.handle('settings:set', (_e, key, value) => {
+  if (!(key in DEFAULTS)) return;
+  saveSettings({ ...settings(), [key]: !!value });
+  if (LIVE[key]) win?.webContents.executeJavaScript(`window.c07Enhance && (${LIVE[key](!!value)})`).catch(() => {});
+});
+ipcMain.handle('settings:action', async (_e, name) => {
+  const close = () => settingsWin?.close();
+  switch (name) {
+    case 'close': return close();
+    case 'restart': close(); return startGame();
+    case 'screenshot': close(); await new Promise((r) => setTimeout(r, 400)); return takeScreenshot(win);
+    case 'screenshots': return showScreenshots();
+    case 'backup': return saves.backupNow(settingsWin || win);
+    case 'restore': close(); return saves.restore(win, startGame);
+    case 'backups': return saves.showBackups();
+  }
+});
 
 function buildMenu() {
   Menu.setApplicationMenu(Menu.buildFromTemplate([
-    process.platform === 'darwin' ? { role: 'appMenu' } : { label: 'File', submenu: [{ role: 'quit' }] },
-    { label: 'Game', submenu: [
-      { label: 'Real Player Names', type: 'checkbox', checked: settings().realNames, click: toggleRealNames,
-        toolTip: `Shows real names for ${COUNT} players the game gave made-up names` },
+    MAC ? { label: app.name, submenu: [
+      { role: 'about' },
       { type: 'separator' },
+      { label: 'Settings…', accelerator: 'CmdOrCtrl+,', click: () => openSettings() },
+      { type: 'separator' },
+      { role: 'hide' }, { role: 'hideOthers' }, { role: 'unhide' },
+      { type: 'separator' },
+      { role: 'quit' },
+    ] } : { label: 'File', submenu: [
+      { label: 'Settings…', accelerator: 'CmdOrCtrl+,', click: () => openSettings() },
+      { type: 'separator' },
+      { role: 'quit' },
+    ] },
+    { label: 'Game', submenu: [
       { label: 'Restart Game', accelerator: 'CmdOrCtrl+R', click: () => startGame() },
       { type: 'separator' },
       { label: 'Take Screenshot', accelerator: 'CmdOrCtrl+Shift+S', click: () => takeScreenshot(win) },
-      { label: process.platform === 'darwin' ? 'Show Screenshots in Finder' : 'Show Screenshots Folder', click: () => showScreenshots() },
+      { label: MAC ? 'Show Screenshots in Finder' : 'Show Screenshots Folder', click: () => showScreenshots() },
     ] },
     { label: 'Saves', submenu: [
       { label: 'Back Up Saves Now', click: () => win && saves.backupNow(win) },
       { label: 'Restore Saves…', click: () => win && saves.restore(win, startGame) },
       { type: 'separator' },
-      { label: 'Show Backups in Finder', click: () => saves.showBackups() },
+      { label: MAC ? 'Show Backups in Finder' : 'Show Backups Folder', click: () => saves.showBackups() },
     ] },
     { label: 'View', submenu: [
       { role: 'togglefullscreen' },
@@ -233,13 +319,18 @@ function buildMenu() {
         win?.webContents.executeJavaScript(`document.body.classList.toggle('kbd-on')`) },
       { type: 'separator' }, { role: 'toggleDevTools' },
     ] },
-    ...(process.platform === 'darwin' ? [{ role: 'windowMenu' }] : []),
+    ...(MAC ? [{ role: 'windowMenu' }] : []),
     { role: 'help', submenu: [
       { label: 'About the Browser Port', click: () => shell.openExternal('https://github.com/Dhaiwat10/cricket07-browser') },
       { label: 'This App on GitHub', click: () => shell.openExternal('https://github.com/udeshvirk/cricket07-mac') },
     ] },
   ]));
 }
+
+// Only one copy may run: two copies sharing the game's storage make the browser engine treat it as damaged
+// and wipe it (game files and saves). A second launch just brings the running game to the front.
+if (!app.requestSingleInstanceLock()) app.exit(0);
+app.on('second-instance', () => { if (win) { if (win.isMinimized()) win.restore(); win.show(); win.focus(); } });
 
 app.whenReady().then(() => {
   protocol.handle(SCHEME, (request) => handle(request).catch((err) => new Response(String(err), { status: 503, headers: ISOLATION })));
