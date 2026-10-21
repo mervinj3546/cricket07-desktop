@@ -10,7 +10,7 @@
 //   the smaller copies instead of thinning out. Applies to textures loaded after it is on (restart to change).
 // - HD textures: textures up to 512 pixels get their copy at twice the size (Catmull-Rom with an anti-ringing
 //   clamp, on premultiplied colour), which makes menus, logos and kits crisper. Needs a restart.
-// - Sharpen and Vivid Colours: contrast-adaptive sharpening and a gentle saturation/contrast boost on the final
+// - Sharpen and Vivid Colours: contrast-adaptive sharpening and a gentle colour (saturation) boost that keeps brightness on the final
 //   picture, after FXAA. Both can be switched live.
 // - Widescreen: the game's frame image is made as wide as the screen and the 3D scene is drawn with a wider
 //   view instead of being stretched; 2D (menus, scoreboard) fills the screen as before. Needs a restart.
@@ -133,8 +133,7 @@ fn ld(p: vec2i) -> vec3f { return textureLoad(src, clamp(p, vec2i(0), vec2i(text
     c = clamp((c + (n + s + e + w) * wgt) / (1.0 + 4.0 * wgt), vec3f(0.0), vec3f(1.0));
   }
   let l = dot(c, vec3f(0.299, 0.587, 0.114));
-  c = mix(vec3f(l), c, prm.sat);                                  // saturation
-  c = clamp((c - 0.5) * prm.con + 0.5, vec3f(0.0), vec3f(1.0));   // contrast
+  c = clamp(mix(vec3f(l), c, prm.sat), vec3f(0.0), vec3f(1.0));   // saturation (brightness stays the same)
   return vec4f(c, 1.0);
 }`;
 
@@ -208,7 +207,7 @@ struct VO { @builtin(position) pos: vec4f, @location(0) uv: vec2f };
       try {
         if (!linear) linear = createSampler.call(device, { minFilter: 'linear', magFilter: 'linear' });
         if (!ubuf) ubuf = device.createBuffer({ size: 16, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
-        device.queue.writeBuffer(ubuf, 0, new Float32Array([cfg.sharpen, cfg.vivid ? 1.18 : 1, cfg.vivid ? 1.07 : 1, 0]));
+        device.queue.writeBuffer(ubuf, 0, new Float32Array([cfg.sharpen, cfg.vivid ? 1.2 : 1, 1, 0]));
         // the steps run at the picture's own size; if the window's size differs (it changed after the game
         // started), a last step scales the result to fill the window instead of leaving a black strip
         const steps = [];
