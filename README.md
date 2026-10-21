@@ -1,6 +1,6 @@
 # Cricket 07 for Mac
 
-A Mac app for playing **EA Sports Cricket 07** offline, built on [Dhaiwat](https://github.com/Dhaiwat10)'s
+A Mac app (and Windows, in beta) for playing **EA Sports Cricket 07** offline, built on [Dhaiwat](https://github.com/Dhaiwat10)'s
 browser port of the game ([cricket07.dhaiwat.com](https://cricket07.dhaiwat.com),
 [source](https://github.com/Dhaiwat10/cricket07-browser)).
 
@@ -19,6 +19,10 @@ without internet, and adds a few things for playing on a Mac.
    Open it once, then go to **System Settings → Privacy & Security** and click **Open Anyway**.
    (Or run `xattr -dr com.apple.quarantine "/Applications/Cricket 07 for Mac.app"` in Terminal.)
 
+**Windows (beta, not yet tested on a Windows PC):** download `Cricket07-for-Windows-…-setup.exe` from the
+same release and run it. Windows may show "Windows protected your PC" because the app isn't signed:
+click **More info → Run anyway**. Needs Windows 10 or 11 with a graphics card that supports DirectX 12.
+
 **The first launch needs internet.** It downloads the game from Dhaiwat's site (about 1.2 GB, a few
 minutes), the same way the website does. After that it plays fully offline.
 
@@ -34,6 +38,8 @@ minutes), the same way the website does. After that it plays fully offline.
   the game's player editor.
 - **Save backups.** Your saves are copied to `~/Documents/Cricket 07 for Mac Saves` at each launch
   (the newest 10 are kept). Back up or restore any time from the **Saves** menu.
+- **Screenshots.** **Game → Take Screenshot** (⌘⇧S, or Ctrl+Shift+S on Windows) saves the game picture
+  to `Pictures/<app name> Screenshots`. The usual system screenshot keys may not capture the game.
 - **Mac comforts.** Quitting from the game's menu or with ⌘Q closes the app straight away. The display
   stays awake while you play with a controller, and the game mutes when you switch to another app.
 
@@ -55,7 +61,8 @@ minutes), the same way the website does. After that it plays fully offline.
 ```bash
 npm install
 npm start          # run
-npm run dist       # build the zips into dist/
+npm run dist       # build the Mac zips into dist/
+npm run dist:win   # build the Windows installer into dist/
 ```
 
 ## Credits

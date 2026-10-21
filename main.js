@@ -1,4 +1,4 @@
-// Cricket 07 for Mac: a desktop wrapper for Dhaiwat's browser port of EA Sports Cricket 07
+// Cricket 07 for Mac (and Windows): a desktop wrapper for Dhaiwat's browser port of EA Sports Cricket 07
 // (https://cricket07.dhaiwat.com, source: https://github.com/Dhaiwat10/cricket07-browser).
 //
 // This app contains no game code or game files. On first launch it loads the port's page and engine
@@ -8,6 +8,7 @@ const { app, BrowserWindow, protocol, net, shell, Menu, powerSaveBlocker, dialog
 const path = require('path');
 const fs = require('fs');
 const saves = require('./saves');
+const { takeScreenshot, showScreenshots } = require('./screenshot');
 const { names, COUNT } = require('./names');
 
 const REMOTE = 'https://cricket07.dhaiwat.com/';
@@ -77,7 +78,7 @@ async function engineFile(rel) {
 const FIRST_RUN_OFFLINE = `<!doctype html><meta charset="utf-8"><title>Cricket 07</title>
 <body style="margin:0;height:100vh;display:grid;place-items:center;background:#070b08;color:#eef4ef;font:16px -apple-system,sans-serif;text-align:center">
 <div><h2>Internet needed for the first launch</h2><p style="color:#9fb3a5;max-width:40ch">The first launch downloads the game (about 1.2 GB).
-After that it works offline.<br>Connect to the internet, then choose Game → Restart Game (⌘R).</p></div></body>`;
+After that it works offline.<br>Connect to the internet, then choose Game → Restart Game (${process.platform === 'darwin' ? '⌘R' : 'Ctrl+R'}).</p></div></body>`;
 
 const manifestCache = () => userFile('manifest.json');
 
@@ -210,12 +211,15 @@ async function toggleRealNames(item) {
 
 function buildMenu() {
   Menu.setApplicationMenu(Menu.buildFromTemplate([
-    { role: 'appMenu' },
+    process.platform === 'darwin' ? { role: 'appMenu' } : { label: 'File', submenu: [{ role: 'quit' }] },
     { label: 'Game', submenu: [
       { label: 'Real Player Names', type: 'checkbox', checked: settings().realNames, click: toggleRealNames,
         toolTip: `Shows real names for ${COUNT} players the game gave made-up names` },
       { type: 'separator' },
       { label: 'Restart Game', accelerator: 'CmdOrCtrl+R', click: () => startGame() },
+      { type: 'separator' },
+      { label: 'Take Screenshot', accelerator: 'CmdOrCtrl+Shift+S', click: () => takeScreenshot(win) },
+      { label: process.platform === 'darwin' ? 'Show Screenshots in Finder' : 'Show Screenshots Folder', click: () => showScreenshots() },
     ] },
     { label: 'Saves', submenu: [
       { label: 'Back Up Saves Now', click: () => win && saves.backupNow(win) },
@@ -229,7 +233,7 @@ function buildMenu() {
         win?.webContents.executeJavaScript(`document.body.classList.toggle('kbd-on')`) },
       { type: 'separator' }, { role: 'toggleDevTools' },
     ] },
-    { role: 'windowMenu' },
+    ...(process.platform === 'darwin' ? [{ role: 'windowMenu' }] : []),
     { role: 'help', submenu: [
       { label: 'About the Browser Port', click: () => shell.openExternal('https://github.com/Dhaiwat10/cricket07-browser') },
       { label: 'This App on GitHub', click: () => shell.openExternal('https://github.com/udeshvirk/cricket07-mac') },

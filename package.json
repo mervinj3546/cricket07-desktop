@@ -1,14 +1,15 @@
 {
   "name": "cricket07-mac",
   "productName": "Cricket 07 for Mac",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "description": "Mac app for Dhaiwat's browser port of EA Sports Cricket 07: offline play, full screen, real player names, save backups",
   "license": "MIT",
   "repository": "github:udeshvirk/cricket07-mac",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
-    "dist": "electron-builder --mac zip --arm64 --x64"
+    "dist": "electron-builder --mac zip --arm64 --x64",
+    "dist:win": "electron-builder --win nsis --x64 -c.productName=\"Cricket 07 for Windows\" -c.extraMetadata.productName=\"Cricket 07 for Windows\""
   },
   "build": {
     "appId": "com.github.udeshvirk.cricket07mac",
@@ -16,6 +17,7 @@
     "files": [
       "main.js",
       "saves.js",
+      "screenshot.js",
       "names.js",
       "real-names.json"
     ],
@@ -29,6 +31,16 @@
       "icon": "build-res/icon.png",
       "identity": "-",
       "hardenedRuntime": false
+    },
+    "win": {
+      "icon": "build-res/icon.png",
+      "artifactName": "Cricket07-for-Windows-${version}-setup.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "shortcutName": "Cricket 07"
     }
   },
   "devDependencies": {
