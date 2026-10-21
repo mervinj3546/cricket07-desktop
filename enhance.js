@@ -330,7 +330,10 @@ fn cr(t: f32) -> vec4f {
   if (wsum > 0.001) { rgb = (a.rgb * a.a + b.rgb * b.a + c.rgb * c.a + d.rgb * d.a) / wsum; }
   let avg = wsum * 0.25;
   let mx = max(max(a.a, b.a), max(c.a, d.a));
-  return vec4f(rgb, mix(avg, mx, 0.6));
+  let mn = min(min(a.a, b.a), min(c.a, d.a));
+  // only cut-out edges (a sharp jump in alpha) lean towards the strongest texel; soft see-through areas (shadows,
+  // glows) keep their true average, so they don't get heavier or darker at a distance
+  return vec4f(rgb, select(avg, mix(avg, mx, 0.6), mx - mn > 0.5));
 }`;
   let mipPipes = null;
   function buildMips(enc, game, c) {
@@ -349,8 +352,13 @@ fn cr(t: f32) -> vec4f {
       pass.draw(3);
       pass.end();
     };
-    run(c.k > 1 ? mipPipes.up : mipPipes.copy, createView.call(game), 0);
-    for (let i = 1; i < c.levels; i++) run(mipPipes.down, level(i - 1), i);
+    const orig = createView.call(game);
+    run(c.k > 1 ? mipPipes.up : mipPipes.copy, orig, 0);
+    for (let i = 1; i < c.levels; i++) {
+      // an upscaled copy's next level is the game's own texture, unchanged: drawn at its normal size, it looks exactly as before
+      if (c.k > 1 && i === 1) run(mipPipes.copy, orig, 1);
+      else run(mipPipes.down, level(i - 1), i);
+    }
   }
 
   // the copies are refreshed just before the game's next drawing reaches the GPU
