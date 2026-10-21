@@ -124,6 +124,8 @@ const APP_CSS = `
   canvas, canvas:focus { outline: none !important; }
   #kbd { display: none !important; }
   body.kbd-on #kbd { display: block !important; z-index: 5; }
+  /* the app starts solo play itself, so the Solo / Multiplayer screens are never shown */
+  #view-home, #view-online, #view-lobby { display: none !important; }
 `;
 
 let win = null;
@@ -140,11 +142,15 @@ async function startGame(beforePlay) {
     const state = await win.webContents.executeJavaScript(`(() => {
       const el = document.getElementById('view-home');
       if (!el) return 'none';
-      return el.classList.contains('hidden') ? 'wait' : 'home';
+      if (el.classList.contains('hidden')) return 'wait';
+      // game files are ready: show a short message instead of the (hidden) Solo / Multiplayer screen
+      document.getElementById('view-loading').classList.remove('hidden');
+      document.getElementById('status').textContent = 'Starting the game…';
+      return 'home';
     })()`).catch(() => 'none');
     if (state === 'home') break;
     if (state === 'none') return;   // the offline notice, or an error page
-    await new Promise((r) => setTimeout(r, 400));
+    await new Promise((r) => setTimeout(r, 150));
   }
   await saves.autoBackup(win);
   await applyNamesSetting();
