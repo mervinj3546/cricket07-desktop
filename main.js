@@ -79,6 +79,7 @@ function adapt(rel, buf) {
   if (rel === 'index.html') {
     // no web analytics in the app
     text = text.replace(/<!-- Cloudflare Web Analytics[\s\S]*?<\/script>\n?/, '');
+    text = text.replace(/<script[^>]*static\.cloudflareinsights\.com[^>]*><\/script>\s*/g, '');   // the host's injected tag
     // graphics enhancements (enhance.js, part of this app) load before the port's scripts
     text = text.replace('<script src="netplay.js"></script>', '<script src="enhance.js"></script>\n<script src="netplay.js"></script>');
     // the app's layout is part of the page, so the very first frame is already right (black, no website layout)

@@ -32,6 +32,11 @@ async function checkApp() {
 }
 
 const md5 = (file) => { try { return crypto.createHash('md5').update(fs.readFileSync(file)).digest('hex'); } catch { return null; } };
+// Cloudflare (the site's host) inserts an analytics tag into the page, different on each download, so the
+// page is compared without it (and without the port's own analytics snippet)
+const normalizePage = (text) => text
+  .replace(/<script[^>]*static\.cloudflareinsights\.com[^>]*><\/script>\s*/g, '')
+  .replace(/<!-- Cloudflare Web Analytics[\s\S]*?<\/script>\s*/g, '');
 const tagOf = (res) => (res.headers.get('etag') || '').replace(/^W\//, '').replace(/"/g, '');
 
 // Files to compare: the scripts and engine, plus the list of game files (images rarely matter)
@@ -44,6 +49,12 @@ async function checkEngine(engine) {
   for (const rel of [...ENGINE_COMPARE, 'game/manifest.json']) {
     const local = rel === 'game/manifest.json' ? engine.manifest : path.join(engine.dir, ...rel.split('/'));
     if (!fs.existsSync(local)) continue;
+    if (rel === 'index.html') {
+      const res = await net.fetch(engine.remote + rel, { cache: 'no-store' });
+      if (!res.ok) throw new Error(`${rel}: HTTP ${res.status}`);
+      if (normalizePage(await res.text()) !== normalizePage(fs.readFileSync(local, 'utf8'))) changed.push(rel);
+      continue;
+    }
     const res = await net.fetch(engine.remote + rel, { method: 'HEAD', cache: 'no-store' });
     if (!res.ok) throw new Error(`${rel}: HTTP ${res.status}`);
     const tag = tagOf(res);
@@ -58,14 +69,15 @@ async function checkEngine(engine) {
 // Runs both checks (unless offline) and remembers the result. Returns the saved state.
 async function check(engine) {
   const s = readState();
-  const out = { ...s, checkedAt: Date.now(), error: null };
+  const out = { ...s, checkedAt: Date.now(), checkedWith: app.getVersion(), error: null };
   try { out.app = await checkApp(); } catch (err) { out.error = String(err.message || err); }
   try { out.engine = await checkEngine(engine); } catch (err) { out.error = out.error || String(err.message || err); }
   writeState(out);
   return out;
 }
 
-const due = () => Date.now() - (readState().checkedAt || 0) > DAY;
+// once a day, and straight away after the app itself was updated (an older version's results may be stale)
+const due = () => { const s = readState(); return Date.now() - (s.checkedAt || 0) > DAY || s.checkedWith !== app.getVersion(); };
 
 // Which updates haven't been mentioned yet (so the in-game notice shows once per new version)
 function unannounced() {
@@ -113,4 +125,4 @@ async function updateEngine(engine, files, onProgress = () => {}) {
   writeState(s);
 }
 
-module.exports = { check, due, readState, unannounced, markAnnounced, updateEngine, newer };
+module.exports = { normalizePage, check, due, readState, unannounced, markAnnounced, updateEngine, newer };
