@@ -39,12 +39,14 @@ jobs:
           if (-not $exe) { throw 'The installed app was not found' }
           Write-Host "Installed at $($exe.FullName)"
           $data = Join-Path $env:RUNNER_TEMP 'installed-app-data'
-          $p = Start-Process -FilePath $exe.FullName -ArgumentList "--user-data-dir=`"$data`"", '--use-webgpu-adapter=swiftshader', '--enable-unsafe-swiftshader' -PassThru
+          $p = Start-Process -FilePath $exe.FullName -ArgumentList "--user-data-dir=$data", '--use-webgpu-adapter=swiftshader', '--enable-unsafe-swiftshader' -PassThru
           Start-Sleep -Seconds 45
           if ($p.HasExited) { throw "The installed app quit by itself (exit code $($p.ExitCode))" }
           Write-Host 'The installed app is running'
-          if (-not (Test-Path (Join-Path $data 'engine\build\cricket07.wasm'))) { throw 'The installed app did not fetch the game engine' }
-          Write-Host 'The installed app fetched the game engine'
+          # a first launch fetches the launcher page and its scripts; the engine itself follows the download choice
+          Get-ChildItem $data -Recurse -Depth 1 -ErrorAction SilentlyContinue | Select-Object -First 30 | ForEach-Object { Write-Host "  $($_.FullName)" }
+          if (-not (Test-Path (Join-Path $data 'engine\c07.js'))) { throw 'The installed app did not fetch the game launcher' }
+          Write-Host 'The installed app fetched the game launcher'
           Stop-Process -Id $p.Id -Force
 
       - name: Play through a first launch
