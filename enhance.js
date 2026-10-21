@@ -8,6 +8,8 @@
 //   boards and buildings flicker as the camera moves. Each such texture gets an uncompressed copy with a full
 //   set of mipmaps, which the game is given to draw with. Cut-out textures (crowd, trees) keep their shape in
 //   the smaller copies instead of thinning out. Applies to textures loaded after it is on (restart to change).
+// - HD textures: textures up to 512 pixels get their copy at twice the size (Catmull-Rom with an anti-ringing
+//   clamp, on premultiplied colour), which makes menus, logos and kits crisper. Needs a restart.
 // - Sharpen and Vivid Colours: contrast-adaptive sharpening and a gentle saturation/contrast boost on the final
 //   picture, after FXAA. Both can be switched live.
 // - Widescreen: the game's frame image is made as wide as the screen and the 3D scene is drawn with a wider
@@ -18,7 +20,7 @@
   if (!window.GPUDevice) return;
   const q = new URLSearchParams(location.search);
   const cfg = (window.c07Enhance = { fxaa: q.get('fxaa') !== '0', aniso: q.get('aniso') !== '0', mips: q.get('mips') !== '0',
-    sharpen: q.get('sharpen') === '0' ? 0 : 0.5, vivid: q.get('vivid') === '1', wide: q.get('wide') === '1', msaa: q.get('msaa') === '1' });
+    sharpen: q.get('sharpen') === '0' ? 0 : 0.5, vivid: q.get('vivid') === '1', wide: q.get('wide') === '1', msaa: q.get('msaa') === '1', upscale: q.get('upscale') === '1' });
 
   // ---- sharper textures
   const createSampler = GPUDevice.prototype.createSampler;
@@ -62,7 +64,7 @@
       d = { ...d, size: { width: ws.w1, height: ws.h, depthOrArrayLayers: 1 } };
     const t = createTexture.call(this, d);
     if (ws) wideScale.set(t, ws.w1 / ws.w);
-    if (cfg.mips) addMipCopy(t, d);
+    if (cfg.mips || cfg.upscale) addMipCopy(t, d);
     return t;
   };
   const getCurrentTexture = GPUCanvasContext.prototype.getCurrentTexture;
@@ -235,17 +237,24 @@ struct VO { @builtin(position) pos: vec4f, @location(0) uv: vec2f };
   const copies = new WeakMap();   // game texture -> { tex, levels, w, h }
   const dirty = new Set();
   let mipFailed = false;
+  const UPSCALE_MAX = 512;
+  const stats = (window.__texStats = { copies: 0, upscaled: 0, bytes: 0 });
 
   function addMipCopy(t, d) {
     if (mipFailed || (d.usage & RENDER_ATTACHMENT) || (d.mipLevelCount || 1) !== 1 || !MIP_FORMATS.has(d.format)) return;
     if ((d.dimension && d.dimension !== '2d') || (d.sampleCount || 1) !== 1) return;
     const s = d.size, w = s.width ?? s[0], h = s.height ?? s[1] ?? 1, layers = s.depthOrArrayLayers ?? s[2] ?? 1;
     if (layers !== 1 || Math.max(w, h) < 64) return;
-    const levels = Math.floor(Math.log2(Math.max(w, h))) + 1;
+    // sharper textures: small and mid-size textures (up to 512) get a copy at twice the size
+    const k = cfg.upscale && Math.max(w, h) <= UPSCALE_MAX ? 2 : 1;
+    const W = w * k, H = h * k;
+    const levels = cfg.mips ? Math.floor(Math.log2(Math.max(W, H))) + 1 : 1;
     try {
-      const tex = createTexture.call(device, { size: [w, h], format: 'rgba8unorm', mipLevelCount: levels,
+      const tex = createTexture.call(device, { size: [W, H], format: 'rgba8unorm', mipLevelCount: levels,
         usage: TEXTURE_BINDING | RENDER_ATTACHMENT, label: 'c07-mips' });
-      copies.set(t, { tex, levels, w, h });
+      copies.set(t, { tex, levels, w, h, k });
+      stats.copies++; if (k > 1) stats.upscaled++;
+      stats.bytes += W * H * 4 * (levels > 1 ? 4 / 3 : 1);
     } catch (err) { mipFailed = true; console.warn('[enhance] mipmaps off:', err); }
   }
 
@@ -280,6 +289,33 @@ struct VO { @builtin(position) pos: vec4f, @location(0) uv: vec2f };
 @fragment fn copy(@builtin(position) pos: vec4f) -> @location(0) vec4f {
   return textureLoad(src, vec2i(pos.xy), 0);
 }
+// level 0 at twice the size: Catmull-Rom (sharp bicubic) on premultiplied colour, clamped to the nearest 2x2
+// texels' range so edges don't get halos (anti-ringing)
+fn ld(p: vec2i) -> vec4f {
+  let q = clamp(p, vec2i(0), vec2i(textureDimensions(src)) - 1);
+  let c = textureLoad(src, q, 0);
+  return vec4f(c.rgb * c.a, c.a);
+}
+fn cr(t: f32) -> vec4f {
+  let t2 = t * t; let t3 = t2 * t;
+  return vec4f(-0.5 * t3 + t2 - 0.5 * t, 1.5 * t3 - 2.5 * t2 + 1.0, -1.5 * t3 + 2.0 * t2 + 0.5 * t, 0.5 * t3 - 0.5 * t2);
+}
+@fragment fn up(@builtin(position) pos: vec4f) -> @location(0) vec4f {
+  let s = pos.xy * 0.5 - 0.5;            // position in the original texture's texels
+  let b = vec2i(floor(s));
+  let f = s - floor(s);
+  let wx = cr(f.x); let wy = cr(f.y);
+  var acc = vec4f(0.0);
+  for (var j = 0; j < 4; j++) {
+    var row = vec4f(0.0);
+    for (var i = 0; i < 4; i++) { row += ld(b + vec2i(i - 1, j - 1)) * wx[i]; }
+    acc += row * wy[j];
+  }
+  let n0 = ld(b); let n1 = ld(b + vec2i(1, 0)); let n2 = ld(b + vec2i(0, 1)); let n3 = ld(b + vec2i(1, 1));
+  acc = clamp(acc, min(min(n0, n1), min(n2, n3)), max(max(n0, n1), max(n2, n3)));
+  if (acc.a <= 0.0001) { return vec4f(0.0); }
+  return vec4f(acc.rgb / acc.a, acc.a);
+}
 // smaller levels: average 2x2 texels; colours weighted by alpha so cut-out edges don't go dark, and alpha
 // leaning towards the strongest texel so crowd and leaf cut-outs keep their shape at a distance
 @fragment fn down(@builtin(position) pos: vec4f) -> @location(0) vec4f {
@@ -302,7 +338,7 @@ struct VO { @builtin(position) pos: vec4f, @location(0) uv: vec2f };
       const module = device.createShaderModule({ code: MIP_WGSL });
       const mk = (entryPoint) => device.createRenderPipeline({ layout: 'auto', vertex: { module, entryPoint: 'vs' },
         fragment: { module, entryPoint, targets: [{ format: 'rgba8unorm' }] }, primitive: { topology: 'triangle-list' } });
-      mipPipes = { copy: mk('copy'), down: mk('down') };
+      mipPipes = { copy: mk('copy'), down: mk('down'), up: mk('up') };
     }
     const level = (i) => createView.call(c.tex, { baseMipLevel: i, mipLevelCount: 1 });
     const run = (pipe, srcView, i) => {
@@ -313,7 +349,7 @@ struct VO { @builtin(position) pos: vec4f, @location(0) uv: vec2f };
       pass.draw(3);
       pass.end();
     };
-    run(mipPipes.copy, createView.call(game), 0);
+    run(c.k > 1 ? mipPipes.up : mipPipes.copy, createView.call(game), 0);
     for (let i = 1; i < c.levels; i++) run(mipPipes.down, level(i - 1), i);
   }
 

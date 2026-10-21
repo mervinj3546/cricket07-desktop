@@ -43,11 +43,11 @@ const ENGINE_DIR = () => userFile('engine');
 // ---------------------------------------------------------------- settings
 
 const SETTINGS = () => userFile('settings.json');
-const DEFAULTS = { realNames: true, fxaa: true, aniso: true, mips: true, sharpen: true, vivid: false, wide: true, msaa: true, autoUpdate: true };
+const DEFAULTS = { realNames: true, fxaa: true, aniso: true, mips: true, sharpen: true, vivid: false, wide: true, msaa: true, upscale: true, autoUpdate: true };
 const settings = () => { try { return { ...DEFAULTS, ...JSON.parse(fs.readFileSync(SETTINGS(), 'utf8')) }; } catch { return { ...DEFAULTS }; } };
 const saveSettings = (s) => fs.writeFileSync(SETTINGS(), JSON.stringify(s, null, 2));
 const gfxQuery = (s) => [s.fxaa ? '' : 'fxaa=0', s.aniso ? '' : 'aniso=0', s.mips ? '' : 'mips=0',
-  s.sharpen ? '' : 'sharpen=0', s.vivid ? 'vivid=1' : '', s.wide ? 'wide=1' : '', s.msaa ? 'msaa=1' : ''].filter(Boolean).join('&');
+  s.sharpen ? '' : 'sharpen=0', s.vivid ? 'vivid=1' : '', s.wide ? 'wide=1' : '', s.msaa ? 'msaa=1' : '', s.upscale ? 'upscale=1' : ''].filter(Boolean).join('&');
 // settings that switch while the game runs (the others apply when the game starts)
 const LIVE = {
   fxaa: (v) => `window.c07Enhance.fxaa = ${v}`,
