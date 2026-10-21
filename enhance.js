@@ -18,7 +18,7 @@
   if (!window.GPUDevice) return;
   const q = new URLSearchParams(location.search);
   const cfg = (window.c07Enhance = { fxaa: q.get('fxaa') !== '0', aniso: q.get('aniso') !== '0', mips: q.get('mips') !== '0',
-    sharpen: q.get('sharpen') === '0' ? 0 : 0.5, vivid: q.get('vivid') === '1', wide: q.get('wide') === '1' });
+    sharpen: q.get('sharpen') === '0' ? 0 : 0.5, vivid: q.get('vivid') === '1', wide: q.get('wide') === '1', msaa: q.get('msaa') === '1' });
 
   // ---- sharper textures
   const createSampler = GPUDevice.prototype.createSampler;
@@ -136,13 +136,34 @@ fn ld(p: vec2i) -> vec3f { return textureLoad(src, clamp(p, vec2i(0), vec2i(text
   return vec4f(c, 1.0);
 }`;
 
-  let failed = false, linear = null, ubuf = null, tmp = null;
+  // plain scaled copy (when the finished picture and the window differ in size, e.g. after leaving full screen)
+  const STRETCH_WGSL = `
+@group(0) @binding(0) var src: texture_2d<f32>;
+@group(0) @binding(1) var smp: sampler;
+struct VO { @builtin(position) pos: vec4f, @location(0) uv: vec2f };
+@vertex fn vs(@builtin(vertex_index) i: u32) -> VO {
+  var p = array<vec2f, 3>(vec2f(-1.0, -1.0), vec2f(3.0, -1.0), vec2f(-1.0, 3.0));
+  var o: VO;
+  o.pos = vec4f(p[i], 0.0, 1.0);
+  o.uv = vec2f((p[i].x + 1.0) * 0.5, (1.0 - p[i].y) * 0.5);
+  return o;
+}
+@fragment fn fs(in: VO) -> @location(0) vec4f { return vec4f(textureSampleLevel(src, smp, in.uv, 0.0).rgb, 1.0); }`;
+
+  let failed = false, linear = null, ubuf = null;
+  const temps = [null, null];
+  const tempTex = (i, w, h, format) => {
+    const t = temps[i];
+    if (t && t.width === w && t.height === h && t.format === format) return t;
+    if (t) t.destroy();
+    return (temps[i] = createTexture.call(device, { size: [w, h], format, usage: RENDER_ATTACHMENT | TEXTURE_BINDING, label: 'c07-post' }));
+  };
   const pipes = {};
   const bindCache = new WeakMap();   // texture -> { fxaa, post }
   function pipe(kind, format) {
     const key = kind + ':' + format;
     if (!pipes[key]) {
-      const module = device.createShaderModule({ code: kind === 'fxaa' ? WGSL : POST_WGSL });
+      const module = device.createShaderModule({ code: kind === 'fxaa' ? WGSL : kind === 'stretch' ? STRETCH_WGSL : POST_WGSL });
       pipes[key] = device.createRenderPipeline({ layout: 'auto', vertex: { module, entryPoint: 'vs' },
         fragment: { module, entryPoint: 'fs', targets: [{ format }] }, primitive: { topology: 'triangle-list' } });
     }
@@ -152,7 +173,7 @@ fn ld(p: vec2i) -> vec3f { return textureLoad(src, clamp(p, vec2i(0), vec2i(text
     let g = bindCache.get(tex);
     if (!g) bindCache.set(tex, (g = {}));
     if (!g[kind] || g[kind].p !== p) {
-      const second = kind === 'fxaa' ? { binding: 1, resource: linear } : { binding: 1, resource: { buffer: ubuf } };
+      const second = kind === 'post' ? { binding: 1, resource: { buffer: ubuf } } : { binding: 1, resource: linear };
       g[kind] = { p, bg: device.createBindGroup({ layout: p.getBindGroupLayout(0),
         entries: [{ binding: 0, resource: tex.createView() }, second] }) };
     }
@@ -179,22 +200,27 @@ fn ld(p: vec2i) -> vec3f { return textureLoad(src, clamp(p, vec2i(0), vec2i(text
     const whole = wideSrc || (atZero(source.origin) && atZero(destination.origin) && !source.mipLevel && !destination.mipLevel &&
       w === s.width && h === s.height && d.width >= w && d.height >= h);
     const post = cfg.sharpen > 0 || cfg.vivid || wideSrc;
+    const fxaa = cfg.fxaa && !cfg.msaaActive;
     if (wideSrc) { w = Math.min(s.width, d.width); h = Math.min(s.height, d.height); }
-    if ((cfg.fxaa || post) && !failed && device && canvasTextures.has(d) && whole && (s.usage & TEXTURE_BINDING)) {
+    if ((fxaa || post) && !failed && device && canvasTextures.has(d) && whole && (s.usage & TEXTURE_BINDING)) {
       try {
         if (!linear) linear = createSampler.call(device, { minFilter: 'linear', magFilter: 'linear' });
         if (!ubuf) ubuf = device.createBuffer({ size: 16, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
         device.queue.writeBuffer(ubuf, 0, new Float32Array([cfg.sharpen, cfg.vivid ? 1.18 : 1, cfg.vivid ? 1.07 : 1, 0]));
-        if (cfg.fxaa && post) {
-          if (!tmp || tmp.width !== w || tmp.height !== h || tmp.format !== d.format) {
-            if (tmp) tmp.destroy();
-            tmp = createTexture.call(device, { size: [w, h], format: d.format, usage: RENDER_ATTACHMENT | TEXTURE_BINDING, label: 'c07-post' });
-          }
-          draw(this, 'fxaa', s, tmp, w, h);
-          draw(this, 'post', tmp, d, w, h);
-        } else {
-          draw(this, cfg.fxaa ? 'fxaa' : 'post', s, d, w, h);
-        }
+        // the steps run at the picture's own size; if the window's size differs (it changed after the game
+        // started), a last step scales the result to fill the window instead of leaving a black strip
+        const steps = [];
+        if (cfg.fxaa && !cfg.msaaActive) steps.push('fxaa');   // MSAA already smooths the edges: FXAA would only blur
+        if (cfg.sharpen > 0 || cfg.vivid || (wideSrc && !steps.length)) steps.push('post');
+        const stretch = wideSrc && (s.width !== d.width || s.height !== d.height);
+        let src = s, sw = stretch ? s.width : w, sh = stretch ? s.height : h;
+        steps.forEach((step, i) => {
+          const last = i === steps.length - 1 && !stretch;
+          const target = last ? d : tempTex(i % 2, sw, sh, d.format);
+          draw(this, step, src, target, sw, sh);
+          src = target;
+        });
+        if (stretch) draw(this, 'stretch', src, d, d.width, d.height);
         return;
       } catch (err) {
         failed = true;   // fall back to the plain copy for the rest of the session
@@ -341,6 +367,103 @@ fn ld(p: vec2i) -> vec3f { return textureLoad(src, clamp(p, vec2i(0), vec2i(text
       const p = passScale.get(this);
       if (p) { x *= p.sc; w *= p.sc; }   // viewports stretch with the image; the shader keeps 3D in proportion
       return setViewport.call(this, x, y, w, h, a, b);
+    };
+  }
+
+  // ---- true anti-aliasing (4x MSAA)
+  // The game draws each frame into one image (plus a depth buffer) through render passes, and never reads that
+  // image as a texture. Those passes are pointed at hidden 4x multisampled copies instead, which resolve into
+  // the game's image at the end of each pass, and the game's pipelines get 4x twins (compiled in the background).
+  // Anything unexpected switches MSAA off for the rest of the session and the game draws as before.
+  if (cfg.msaa) {
+    const SAMPLES = 4;
+    let msaaOff = false;
+    cfg.msaaActive = true;
+    const off = (why) => { if (!msaaOff) { msaaOff = true; cfg.msaaActive = false; console.warn('[enhance] MSAA off:', why); } };
+    const big = (d) => { const z = d.size, w = z.width ?? z[0], h = z.height ?? z[1]; return w >= 512 && h >= 384; };
+    const msTex = new WeakMap();    // game render target -> its 4x copy
+    const msView = new WeakMap();   // view of a game render target -> view of its 4x copy
+    const viewOf = new WeakMap();   // view -> texture
+    const pipeDesc = new WeakMap(), pipeTwin = new WeakMap();
+    const msPasses = new WeakSet();
+
+    const ctex = GPUDevice.prototype.createTexture;
+    GPUDevice.prototype.createTexture = function (d) {
+      const t = ctex.call(this, d);
+      if (!msaaOff && (d.usage & RENDER_ATTACHMENT) && (d.sampleCount || 1) === 1 && (d.mipLevelCount || 1) === 1 && big(d) &&
+          (d.format === 'bgra8unorm' || d.format === 'depth24plus-stencil8')) {
+        try {
+          const m = createTexture.call(this, { size: [t.width, t.height], format: d.format, sampleCount: SAMPLES,
+            usage: RENDER_ATTACHMENT, label: 'c07-msaa' });
+          msTex.set(t, m);
+          if (wideScale.has(t)) wideScale.set(m, wideScale.get(t));   // widescreen viewports follow it too
+        } catch (err) { off(err); }
+      }
+      return t;
+    };
+    const cview = GPUTexture.prototype.createView;
+    GPUTexture.prototype.createView = function (d) {
+      const v = cview.call(this, d);
+      viewOf.set(v, this);
+      return v;
+    };
+    const msViewFor = (v) => {
+      if (!v) return null;
+      let mv = msView.get(v);
+      if (!mv) { const m = msTex.get(viewOf.get(v)); if (!m) return null; mv = m.createView(); msView.set(v, mv); }
+      return mv;
+    };
+
+    const cpipe = GPUDevice.prototype.createRenderPipeline;
+    GPUDevice.prototype.createRenderPipeline = function (d) {
+      const p = cpipe.call(this, d);
+      // the game's pipelines: explicit layout (so its bind groups fit the twin), drawing into its image + depth
+      if (!msaaOff && d && d.layout && d.layout !== 'auto' && (d.multisample?.count || 1) === 1 &&
+          d.depthStencil?.format === 'depth24plus-stencil8' && d.fragment?.targets?.length === 1) {
+        const twin = { ...d, multisample: { count: SAMPLES, mask: 0xffffffff, alphaToCoverageEnabled: false } };
+        pipeDesc.set(p, twin);
+        this.createRenderPipelineAsync(twin).then((t) => pipeTwin.set(p, t)).catch((err) => off(err));
+      }
+      return p;
+    };
+
+    const bpass = GPUCommandEncoder.prototype.beginRenderPass;
+    GPUCommandEncoder.prototype.beginRenderPass = function (d) {
+      const c = d.colorAttachments?.length === 1 ? d.colorAttachments[0] : null, z = d.depthStencilAttachment;
+      const mc = c && msViewFor(c.view), mz = z && msViewFor(z.view);
+      if (cfg.msaaPaused) return bpass.call(this, d);   // live A/B comparison (tests only)
+      if (msaaOff || !c || !mc || (z && !mz) || c.resolveTarget) {
+        // a pass into the game's image that can't be multisampled would leave the 4x copy out of date
+        if (!msaaOff && c && msTex.has(viewOf.get(c.view))) off('unexpected pass into the game image');
+        return bpass.call(this, d);
+      }
+      const md = { ...d, colorAttachments: [{ ...c, view: mc, resolveTarget: c.view, storeOp: 'store' }] };
+      if (z) md.depthStencilAttachment = { ...z, view: mz };
+      const pass = bpass.call(this, md);
+      msPasses.add(pass);
+      return pass;
+    };
+    const spipe = GPURenderPassEncoder.prototype.setPipeline;
+    GPURenderPassEncoder.prototype.setPipeline = function (p) {
+      if (msPasses.has(this)) {
+        let t = pipeTwin.get(p);
+        if (!t) {
+          const d = pipeDesc.get(p);
+          if (!d) { off('pipeline without a 4x twin'); return spipe.call(this, p); }
+          t = cpipe.call(device, d);   // not compiled yet: build it now (once)
+          pipeTwin.set(p, t);
+        }
+        return spipe.call(this, t);
+      }
+      return spipe.call(this, p);
+    };
+    // any GPU error after this is switched on: switch it off (the game itself doesn't produce errors)
+    const watch = new WeakSet();
+    const reqDev = GPUAdapter.prototype.requestDevice;
+    GPUAdapter.prototype.requestDevice = async function (...a) {
+      const dev = await reqDev.apply(this, a);
+      if (!watch.has(dev)) { watch.add(dev); dev.addEventListener('uncapturederror', (e) => off(e.error?.message || 'GPU error')); }
+      return dev;
     };
   }
 })();
