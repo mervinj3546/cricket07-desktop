@@ -43,7 +43,7 @@ const ENGINE_DIR = () => userFile('engine');
 // ---------------------------------------------------------------- settings
 
 const SETTINGS = () => userFile('settings.json');
-const DEFAULTS = { realNames: true, fxaa: true, aniso: true, mips: true, sharpen: true, vivid: false, wide: true, msaa: true, upscale: true, autoUpdate: true };
+const DEFAULTS = { realNames: true, fxaa: true, aniso: true, mips: true, sharpen: true, vivid: false, wide: true, msaa: true, upscale: true, skipIntro: true, autoUpdate: true };
 const settings = () => { try { return { ...DEFAULTS, ...JSON.parse(fs.readFileSync(SETTINGS(), 'utf8')) }; } catch { return { ...DEFAULTS }; } };
 const saveSettings = (s) => fs.writeFileSync(SETTINGS(), JSON.stringify(s, null, 2));
 const gfxQuery = (s) => [s.fxaa ? '' : 'fxaa=0', s.aniso ? '' : 'aniso=0', s.mips ? '' : 'mips=0',
@@ -184,6 +184,7 @@ async function startGame(beforePlay) {
   }
   await saves.autoBackup(win);
   await applyNamesSetting();
+  await applyIntroSetting();
   if (beforePlay) await beforePlay();
   await win.webContents.executeJavaScript(`document.getElementById('play').click()`);
   win.webContents.executeJavaScript(HINT_JS).catch(() => {});
@@ -200,6 +201,21 @@ const HINT_JS = `(() => {
   setTimeout(() => { d.style.opacity = '0'; }, 18000);
   setTimeout(() => d.remove(), 19000);
 })()`;
+
+// Skip intro: the EA Sports logo movie is the one startup video the game needs; with the file renamed the game
+// simply goes on to the next screen. Renamed back when the setting is off.
+async function applyIntroSetting() {
+  const [from, to] = settings().skipIntro ? ['eaep.vp6', 'eaep.vp6.skip'] : ['eaep.vp6.skip', 'eaep.vp6'];
+  await win.webContents.executeJavaScript(`(async () => {
+    try {
+      const d = await (await (await navigator.storage.getDirectory()).getDirectoryHandle('c07game')).getDirectoryHandle('Data');
+      const h = await d.getFileHandle('${from}').catch(() => null);
+      if (!h) return;
+      await d.removeEntry('${to}').catch(() => {});   // a stale copy (the launcher may have fetched it again)
+      await h.move('${to}');
+    } catch (err) { console.warn('skip intro:', err); }
+  })()`).catch(() => {});
+}
 
 async function applyNamesSetting() {
   try {
