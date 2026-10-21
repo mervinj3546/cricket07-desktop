@@ -1,0 +1,38 @@
+{
+  "name": "cricket07-mac",
+  "productName": "Cricket 07 for Mac",
+  "version": "1.0.0",
+  "description": "Mac app for Dhaiwat's browser port of EA Sports Cricket 07: offline play, full screen, real player names, save backups",
+  "license": "MIT",
+  "repository": "github:udeshvirk/cricket07-mac",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --mac zip --arm64 --x64"
+  },
+  "build": {
+    "appId": "com.github.udeshvirk.cricket07mac",
+    "productName": "Cricket 07 for Mac",
+    "files": [
+      "main.js",
+      "saves.js",
+      "names.js",
+      "real-names.json"
+    ],
+    "directories": {
+      "buildResources": "build-res",
+      "output": "dist"
+    },
+    "artifactName": "Cricket07-for-Mac-${version}-${arch}.${ext}",
+    "mac": {
+      "category": "public.app-category.sports-games",
+      "icon": "build-res/icon.png",
+      "identity": "-",
+      "hardenedRuntime": false
+    }
+  },
+  "devDependencies": {
+    "electron": "^38.0.0",
+    "electron-builder": "^26.0.0"
+  }
+}
