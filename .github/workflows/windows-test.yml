@@ -1,0 +1,62 @@
+# Checks the Windows app on a real Windows machine: builds and installs the installer, then plays through a first
+# launch as a new user. Screenshots and logs are kept as the run's artifacts. GitHub's Windows machines have no
+# graphics card, so the game runs on software graphics: slow, but enough to find Windows-specific problems.
+name: Windows test
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Game download to test (full or lite)
+        default: full
+  release:
+    types: [published]
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - name: Build the installer
+        run: npm run dist:win
+
+      - name: Install it silently and launch the installed app
+        shell: pwsh
+        run: |
+          $setup = Get-ChildItem dist\*-setup.exe | Select-Object -First 1
+          Write-Host "Installing $($setup.Name)"
+          Start-Process -FilePath $setup.FullName -ArgumentList '/S' -Wait
+          $exe = Get-ChildItem "$env:LOCALAPPDATA\Programs" -Recurse -Filter 'Cricket 07 for Windows.exe' | Select-Object -First 1
+          if (-not $exe) { throw 'The installed app was not found' }
+          Write-Host "Installed at $($exe.FullName)"
+          $data = Join-Path $env:RUNNER_TEMP 'installed-app-data'
+          $p = Start-Process -FilePath $exe.FullName -ArgumentList "--user-data-dir=`"$data`"", '--use-webgpu-adapter=swiftshader', '--enable-unsafe-swiftshader' -PassThru
+          Start-Sleep -Seconds 45
+          if ($p.HasExited) { throw "The installed app quit by itself (exit code $($p.ExitCode))" }
+          Write-Host 'The installed app is running'
+          if (-not (Test-Path (Join-Path $data 'engine\build\cricket07.wasm'))) { throw 'The installed app did not fetch the game engine' }
+          Write-Host 'The installed app fetched the game engine'
+          Stop-Process -Id $p.Id -Force
+
+      - name: Play through a first launch
+        env:
+          OUT: ${{ runner.temp }}\smoke
+          MODE: ${{ inputs.mode || 'full' }}
+          SOFTWARE_GPU: '1'
+        run: npx electron test/smoke.js
+
+      - name: Keep screenshots and logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-test
+          path: ${{ runner.temp }}\smoke
