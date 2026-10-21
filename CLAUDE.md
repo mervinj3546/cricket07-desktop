@@ -34,7 +34,7 @@ Skip intro = rename OPFS `Data/eaep.vp6` → `eaep.vp6.skip` before the game sta
 
 ## Releasing
 1. Bump `version` in `package.json`, commit, push.
-2. `npm run dist` (Mac zips) — `npm run dist:win` is built by CI; build it locally only if needed.
+2. `npm run dist` (Mac zips) and `npm run dist:win` (Windows installer); both build on a Mac.
 3. Rename for the README's fixed "latest" links: `Cricket07-Mac-arm64.zip` → `Cricket07-Mac-Apple-Chip.zip`,
    `Cricket07-Mac-x64.zip` → `Cricket07-Mac-Intel.zip`; Windows is `Cricket07-Windows-Setup.exe`.
 4. `gh release create vX.Y.Z <files> --notes "…"` (plain-language notes). Publishing triggers the Windows test;
