@@ -1,74 +1,96 @@
-# Cricket 07 for Mac
+# Cricket 07 for Mac and Windows
 
-A Mac app (and Windows, in beta) for playing **EA Sports Cricket 07** offline, built on [Dhaiwat](https://github.com/Dhaiwat10)'s
-browser port of the game ([cricket07.dhaiwat.com](https://cricket07.dhaiwat.com),
-[source](https://github.com/Dhaiwat10/cricket07-browser)).
-
-Dhaiwat did the hard part: he translated the original 2006 Windows game to run in a browser, with
-graphics rebuilt on WebGPU. This app wraps his port in a desktop window so it works without a browser and
-without internet, and adds real player names, widescreen and a few picture improvements.
+Play **EA Sports Cricket 07** on your computer, offline, with real player names and a sharper widescreen picture.
 
 ![A match at Kandy in widescreen](docs/stadium.jpg)
+
+## ⬇️ Download
+
+| Your computer | Download |
+|---|---|
+| **Mac with an Apple chip** (M1, M2, M3, M4: most Macs from late 2020 onwards) | [**Download for Mac (Apple chip)**](https://github.com/udeshvirk/cricket07-mac/releases/latest/download/Cricket07-Mac-Apple-Chip.zip) |
+| **Mac with an Intel chip** (older Macs) | [**Download for Mac (Intel)**](https://github.com/udeshvirk/cricket07-mac/releases/latest/download/Cricket07-Mac-Intel.zip) |
+| **Windows 10 or 11** | [**Download for Windows**](https://github.com/udeshvirk/cricket07-mac/releases/latest/download/Cricket07-Windows-Setup.exe) |
+
+**Not sure which Mac you have?** Click the Apple menu  in the top-left corner and choose **About This Mac**.
+If it says **Chip: Apple M…**, take the Apple chip version. If it says **Processor: Intel**, take the Intel version.
+
+All versions and what changed in each: [releases page](https://github.com/udeshvirk/cricket07-mac/releases).
+
+## Install on a Mac
+
+1. Open your **Downloads** folder and double-click the file you downloaded. A **Cricket 07 for Mac** app appears.
+2. Drag the app into your **Applications** folder.
+3. Double-click the app to open it. The first time, your Mac says it can't check the app, because the app isn't
+   registered with Apple. Click **Done** (or **OK**).
+4. Open **System Settings** → **Privacy & Security**, scroll down, and click **Open Anyway** next to
+   "Cricket 07 for Mac". Confirm with your password if asked.
+5. From now on, the app opens normally.
+
+## Install on Windows
+
+1. Double-click the downloaded **Cricket07-Windows-Setup.exe**.
+2. If Windows shows **"Windows protected your PC"**, click **More info**, then **Run anyway**. This appears
+   because the app isn't registered with Microsoft.
+3. Follow the installer. A **Cricket 07** shortcut appears on your desktop.
+
+The Windows version is new: if something doesn't work, please [tell us](https://github.com/udeshvirk/cricket07-mac/issues).
+
+## The first time you play
+
+- **Keep the internet on.** The game downloads once (a minute or two on a fast connection). After that it
+  works without internet.
+- Choose **Regular** (the whole game, about 740 MB) or **Lite** (no commentary, about 440 MB).
+- The game opens full screen and goes straight in.
+
+## Playing
+
+| To do this | Keyboard | Controller |
+|---|---|---|
+| Move, aim a shot | Arrow keys | Left stick |
+| Select, play a shot | **S** | ✕ / A |
+| Go back | **W** | △ / Y |
+| Lofted shot (hit it in the air) | Hold **Shift** + shot | Hold L1 / LB + shot |
+| Pause | **Esc** | |
+| All keyboard controls | **⌘K** (Ctrl+K on Windows) | |
+| Settings | **⌘,** (Ctrl+, on Windows) | |
+| Take a screenshot | **⌘⇧S** (Ctrl+Shift+S) | |
+| Leave full screen | **⌃⌘F** (F11 on Windows) | |
+| Quit | **⌘Q** (Alt+F4 on Windows), or Quit in the game's menu | |
+
+**To keep your settings** (like difficulty): in the game, go to **My Cricket → Load / Save → Save**.
+The game only remembers changes you save there.
+
+## What's special about this version
 
 | Real player names | Settings (⌘,) |
 |---|---|
 | ![Pakistan's squad with real names: Shahid Afridi, Inzamam-ul-Haq, Shoaib Akhtar](docs/squad.jpg) | <img src="docs/settings.png" width="300" alt="The Settings window"> |
 
+- **Real player names.** The original game used made-up names for many players (S.Tendehar for Sachin
+  Tendulkar, D.Dhenier for MS Dhoni). This app shows the real names for 394 players.
+- **Widescreen.** See more of the ground instead of a stretched picture.
+- **A cleaner picture.** Smoother edges, sharper textures and less flicker on distant crowds.
+- **Plays offline** after the first download, and **backs up your saves** automatically.
+- **Tells you about updates** when a new version is available.
+- Everything can be switched on or off in **Settings** (⌘, or Ctrl+,).
+
 ![Batting view, with Shahid Afridi on the scoreboard](docs/batting.jpg)
 
-## Download
+**Not included:** online multiplayer. For that, play on [the website](https://cricket07.dhaiwat.com).
 
-1. Download the zip from the [latest release](https://github.com/udeshvirk/cricket07-mac/releases/latest):
-   **arm64** for Apple Silicon Macs (M1 and later), **x64** for Intel Macs.
-2. Unzip it and drag **Cricket 07 for Mac** to your Applications folder.
-3. The app isn't signed with an Apple developer account, so macOS blocks it the first time.
-   Open it once, then go to **System Settings → Privacy & Security** and click **Open Anyway**.
-   (Or run `xattr -dr com.apple.quarantine "/Applications/Cricket 07 for Mac.app"` in Terminal.)
+## Credits
 
-**Windows (beta, not yet tested on a Windows PC):** download `Cricket07-for-Windows-…-setup.exe` from the
-same release and run it. Windows may show "Windows protected your PC" because the app isn't signed:
-click **More info → Run anyway**. Needs Windows 10 or 11 with a graphics card that supports DirectX 12.
+- [Dhaiwat](https://github.com/Dhaiwat10) made the game run on modern computers
+  ([website](https://cricket07.dhaiwat.com), [source](https://github.com/Dhaiwat10/cricket07-browser)).
+  This app is built on his work, and downloads the game from his site.
+- [Stephan Cilliers](https://github.com/stephancill): controller support and online play in Dhaiwat's version.
+- Cricket 07 and EA Sports are trademarks of Electronic Arts. This is a fan project, not affiliated with
+  or endorsed by Electronic Arts or by Dhaiwat. No game files are included in this app.
 
-**The first launch needs internet.** It downloads the game from Dhaiwat's site, the same way the website
-does. You choose **Regular** (the whole game, about 740 MB) or **Lite** (no commentary and one song, about
-440 MB). It takes a minute or two on a fast connection. After that it plays fully offline.
+---
 
-## What it adds
-
-- **Offline play.** The game and the page that runs it are kept on your computer after the first launch.
-- **Straight into the game.** Opens full screen and starts solo play.
-- **Settings window.** Press **⌘,** (Ctrl+, on Windows) at any time, even mid-match, to switch any of the
-  options below on or off.
-- **Real player names.** The game shows made-up names for players EA didn't license (S.Tendehar for
-  Sachin Tendulkar, D.Dhenier for MS Dhoni). The game's own data has a second copy of the player list
-  with the real names, and the app uses it for 394 players across India, Pakistan, West Indies, Sri Lanka,
-  Zimbabwe, Bangladesh, Kenya, Australia, New Zealand and more. Ireland and Bermuda keep placeholder names,
-  since the game has no real ones for them; rename them in the game's player editor.
-- **Widescreen.** Shows more of the ground to the sides instead of stretching the 4:3 picture, so players
-  keep their proportions. Menus and the scoreboard fill the screen as before.
-- **A cleaner picture.** Smooth edges (anti-aliasing), mild sharpening, sharper textures at an angle, and
-  less shimmer on distant crowds, stands and boards. Optional vivid colours. The game still runs at 60 fps.
-- **Screenshots.** **⌘⇧S** (Ctrl+Shift+S) saves the game picture to `Pictures/<app name> Screenshots`.
-  The usual system screenshot keys may not capture the game.
-- **Save backups.** Your saves are copied to `Documents/<app name> Saves` at each launch (the newest 10
-  are kept). Back up or restore any time from Settings.
-- **Desktop comforts.** Quitting from the game's menu or with ⌘Q closes the app straight away. The display
-  stays awake while you play with a controller, and the game mutes when you switch to another app.
-
-## Tips
-
-- **Keep your settings:** the game only remembers settings such as difficulty when you save your
-  profile: **My Cricket → Load / Save → Save**.
-- **Controls:** a PlayStation or Xbox controller works. On the keyboard: arrows to move, **S** to select,
-  **W** to go back, **Esc** to pause. **⌘K** shows the full keyboard controls.
-- **Full screen:** ⌃⌘F (F11 on Windows) switches between full screen and a window.
-
-## Not included
-
-- **Online multiplayer** doesn't work in the app. Use [the website](https://cricket07.dhaiwat.com) for that.
-- **No game files are in this repo or the download.** The app gets them from Dhaiwat's site on first launch.
-
-## Build it yourself
+### For developers
 
 ```bash
 npm install
@@ -77,12 +99,8 @@ npm run dist       # build the Mac zips into dist/
 npm run dist:win   # build the Windows installer into dist/
 ```
 
-## Credits
-
-- [Dhaiwat](https://github.com/Dhaiwat10): the browser port this app runs, and its hosting.
-- [Stephan Cilliers](https://github.com/stephancill): deterministic scheduler, netplay and controller
-  support in the port.
-- Cricket 07 and EA Sports are trademarks of Electronic Arts. This is a fan project, not affiliated with
-  or endorsed by Electronic Arts or by Dhaiwat. Screenshots show the game running in this app.
+Release files are uploaded as `Cricket07-Mac-Apple-Chip.zip`, `Cricket07-Mac-Intel.zip` and
+`Cricket07-Windows-Setup.exe`, so the download links above always point to the latest version.
+The Windows build is checked by an automated test (`.github/workflows/windows-test.yml`) on every release.
 
 MIT licensed (this app's code only).

@@ -29,7 +29,7 @@
       "buildResources": "build-res",
       "output": "dist"
     },
-    "artifactName": "Cricket07-for-Mac-${version}-${arch}.${ext}",
+    "artifactName": "Cricket07-Mac-${arch}.${ext}",
     "mac": {
       "category": "public.app-category.sports-games",
       "icon": "build-res/icon.png",
@@ -38,7 +38,7 @@
     },
     "win": {
       "icon": "build-res/icon.png",
-      "artifactName": "Cricket07-for-Windows-${version}-setup.${ext}"
+      "artifactName": "Cricket07-Windows-Setup.${ext}"
     },
     "nsis": {
       "oneClick": false,
