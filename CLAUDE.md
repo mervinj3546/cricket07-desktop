@@ -8,6 +8,7 @@ in-app text simple.
 - **No EA game files in this repo** (no `.wasm`, `data.gob`, `.cdf`, videos). They download from Dhaiwat's site on first launch.
 - **Never modify the engine.** All changes go through `main.js` (page adjustments) and `enhance.js` (WebGPU hooks).
 - **Every enhancement must have a Settings toggle and fall back safely** (switch itself off on any GPU error).
+- **Don't change `name`/`productName` in package.json**: they set the `userData` folder, so players would lose their game files and settings. (The repo was renamed cricket07-mac → cricket07-desktop; GitHub redirects the old name, so never create a new repo with the old name.)
 - **Test on a scratch `userData` folder, never a player's real data.** Two copies sharing storage once wiped the game files (OPFS).
   The single-instance lock doesn't protect a test script with a different entry point.
 
