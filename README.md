@@ -71,7 +71,7 @@ The game only remembers changes you save there.
   Tendulkar, D.Dhenier for MS Dhoni). This app shows the real names for 394 players.
 - **Widescreen.** See more of the ground instead of a stretched picture.
 - **A cleaner picture.** True anti-aliasing for smooth edges, HD (upscaled) textures, and less flicker on distant crowds.
-- **Starts faster.** Skips the EA Sports logo movie (you can turn that off).
+- **The classic EA Sports intro**, just like 2006. In a hurry? Turn on **Skip intro movie** in Settings.
 - **Plays offline** after the first download, and **backs up your saves** automatically.
 - **Tells you about updates** when a new version is available.
 - Everything can be switched on or off in **Settings** (⌘, or Ctrl+,).

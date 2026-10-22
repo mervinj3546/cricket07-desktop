@@ -43,7 +43,7 @@ const ENGINE_DIR = () => userFile('engine');
 // ---------------------------------------------------------------- settings
 
 const SETTINGS = () => userFile('settings.json');
-const DEFAULTS = { realNames: true, fxaa: true, aniso: true, mips: true, sharpen: true, vivid: false, wide: true, msaa: true, upscale: true, skipIntro: true, autoUpdate: true };
+const DEFAULTS = { realNames: true, fxaa: true, aniso: true, mips: true, sharpen: true, vivid: false, wide: true, msaa: true, upscale: true, skipIntro: false, autoUpdate: true };
 const settings = () => { try { return { ...DEFAULTS, ...JSON.parse(fs.readFileSync(SETTINGS(), 'utf8')) }; } catch { return { ...DEFAULTS }; } };
 const saveSettings = (s) => fs.writeFileSync(SETTINGS(), JSON.stringify(s, null, 2));
 const gfxQuery = (s) => [s.fxaa ? '' : 'fxaa=0', s.aniso ? '' : 'aniso=0', s.mips ? '' : 'mips=0',
