@@ -8,14 +8,14 @@ Play **EA Sports Cricket 07** on your computer, offline, with real player names 
 
 | Your computer | Download |
 |---|---|
-| **Mac with an Apple chip** (M1, M2, M3, M4: most Macs from late 2020 onwards) | [**Download for Mac (Apple chip)**](https://github.com/udeshvirk/cricket07-mac/releases/latest/download/Cricket07-Mac-Apple-Chip.zip) |
-| **Mac with an Intel chip** (older Macs) | [**Download for Mac (Intel)**](https://github.com/udeshvirk/cricket07-mac/releases/latest/download/Cricket07-Mac-Intel.zip) |
-| **Windows 10 or 11** | [**Download for Windows**](https://github.com/udeshvirk/cricket07-mac/releases/latest/download/Cricket07-Windows-Setup.exe) |
+| **Mac with an Apple chip** (M1, M2, M3, M4: most Macs from late 2020 onwards) | [**Download for Mac (Apple chip)**](https://github.com/udeshvirk/cricket07-desktop/releases/latest/download/Cricket07-Mac-Apple-Chip.zip) |
+| **Mac with an Intel chip** (older Macs) | [**Download for Mac (Intel)**](https://github.com/udeshvirk/cricket07-desktop/releases/latest/download/Cricket07-Mac-Intel.zip) |
+| **Windows 10 or 11** | [**Download for Windows**](https://github.com/udeshvirk/cricket07-desktop/releases/latest/download/Cricket07-Windows-Setup.exe) |
 
 **Not sure which Mac you have?** Click the Apple menu  in the top-left corner and choose **About This Mac**.
 If it says **Chip: Apple M…**, take the Apple chip version. If it says **Processor: Intel**, take the Intel version.
 
-All versions and what changed in each: [releases page](https://github.com/udeshvirk/cricket07-mac/releases).
+All versions and what changed in each: [releases page](https://github.com/udeshvirk/cricket07-desktop/releases).
 
 ## Install on a Mac
 
@@ -34,7 +34,7 @@ All versions and what changed in each: [releases page](https://github.com/udeshv
    because the app isn't registered with Microsoft.
 3. Follow the installer. A **Cricket 07** shortcut appears on your desktop.
 
-The Windows version is new: if something doesn't work, please [tell us](https://github.com/udeshvirk/cricket07-mac/issues).
+The Windows version is new: if something doesn't work, please [tell us](https://github.com/udeshvirk/cricket07-desktop/issues).
 
 ## The first time you play
 

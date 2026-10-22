@@ -401,7 +401,7 @@ function buildMenu() {
     ...(MAC ? [{ role: 'windowMenu' }] : []),
     { role: 'help', submenu: [
       { label: 'About the Browser Port', click: () => shell.openExternal('https://github.com/Dhaiwat10/cricket07-browser') },
-      { label: 'This App on GitHub', click: () => shell.openExternal('https://github.com/udeshvirk/cricket07-mac') },
+      { label: 'This App on GitHub', click: () => shell.openExternal('https://github.com/udeshvirk/cricket07-desktop') },
     ] },
   ]));
 }

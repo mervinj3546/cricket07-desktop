@@ -8,7 +8,7 @@ const crypto = require('crypto');
 const path = require('path');
 const fs = require('fs');
 
-const REPO = 'udeshvirk/cricket07-mac';
+const REPO = 'udeshvirk/cricket07-desktop';
 const DAY = 24 * 60 * 60 * 1000;
 
 const STATE = () => path.join(app.getPath('userData'), 'updates.json');
