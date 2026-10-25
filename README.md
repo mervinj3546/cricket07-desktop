@@ -4,7 +4,7 @@ Play **EA Sports Cricket 07** on your computer, offline, with real player names 
 
 Free, no ads. If you enjoy it, please give this page a **⭐ Star** (top right) so more cricket fans can find it.
 
-![A match at Kandy in widescreen](docs/stadium.jpg)
+![Gameplay: a lofted shot into the crowd](docs/gameplay.gif)
 
 ## ⬇️ Download
 
@@ -82,6 +82,8 @@ The game only remembers changes you save there.
 - Everything can be switched on or off in **Settings** (⌘, or Ctrl+,).
 
 ![Batting view, with Shahid Afridi on the scoreboard](docs/batting.jpg)
+
+![A match at Kandy in widescreen](docs/stadium.jpg)
 
 **Not included:** online multiplayer. For that, play on [the website](https://cricket07.dhaiwat.com).
 
