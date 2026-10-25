@@ -76,6 +76,8 @@ The game only remembers changes you save there.
   Tendulkar, D.Dhenier for MS Dhoni). This app shows the real names for 394 players.
 - **Widescreen.** See more of the ground instead of a stretched picture.
 - **A cleaner picture.** True anti-aliasing for smooth edges, HD (upscaled) textures, and less flicker on distant crowds.
+- **Stays smooth on slower laptops.** If a computer can't keep full speed, the heaviest picture effects ease off a
+  little by themselves. Fast computers keep full quality.
 - **Starts faster.** Skips the EA Sports logo movie (you can turn that off).
 - **Plays offline** after the first download, and **backs up your saves** automatically.
 - **Tells you about updates** when a new version is available.
@@ -95,6 +97,12 @@ The game only remembers changes you save there.
 - If a message says no graphics adapter was found, your graphics card can't run the game. On Windows, update your
   graphics driver (from Intel, NVIDIA or AMD's website) and try again.
 - Open **Settings** (⌘, or Ctrl+,) and switch off **Extra-smooth edges**, **HD textures** and **Widescreen**, then restart.
+
+**The game feels slow:** plug in the charger (laptops slow down on battery). The app already eases off picture
+effects if needed; to see the speed, switch on **Show frame rate** in Settings (60 is full speed).
+
+**"The game has stopped" appears:** the game crashed, which can happen on slower computers (often right after
+Quit in the game's menu). Press **Esc** to close, or **Enter** to start again.
 
 **The download stopped:** check your internet, then press **⌘R** (Ctrl+R). It carries on where it left off.
 
