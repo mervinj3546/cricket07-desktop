@@ -33,7 +33,6 @@ Skip intro = rename OPFS `Data/eaep.vp6` → `eaep.vp6.skip` before the game sta
 - Measure picture changes, don't eyeball them: menus and match conditions are random between runs, so compare
   inside one session (live toggles, or read textures back from the GPU) or on a paused frame.
 - Post effects must not shift brightness (most of this game's picture is below mid-grey, so a contrast boost darkens it).
-
 - The engine's sound can loop and crash (`DSound buffer index not advancing, restoring` ×900 → `guest heap exhausted`
   → `Aborted()`) when its timer is starved: on slow machines, often right after Quit in the game menu (Windows), and
   always on the SwiftShader CI machine. Engine bug (Dhaiwat's); the app shows "The game has stopped" (Quit / Start again).
