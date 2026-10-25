@@ -95,6 +95,7 @@
     ['skipIntro', 'Skip intro movie', 'Leaves out the EA Sports logo movie at startup, so the game starts a few seconds sooner.', true],
   ];
   const OPTIONS = [
+    ['auto', 'Keep the game smooth', 'If this computer can\'t keep full speed in a match, the heaviest effects ease off a little. Fast computers keep full quality.', false],
     ['wide', 'Widescreen', 'Shows more of the ground instead of stretching the picture.', true],
     ['msaa', 'Extra-smooth edges', 'True anti-aliasing (4× MSAA): clean edges on players, stumps and lines.', true],
     ['fxaa', 'Smooth edges (light)', 'A lighter edge softening, used when Extra-smooth edges is off.', false],
@@ -103,6 +104,7 @@
     ['upscale', 'HD textures', 'Smaller textures (kits, faces, logos, menus) upscaled 2× for a crisper look.', true],
     ['aniso', 'Sharper textures', 'Keeps the pitch and outfield crisp at an angle.', true],
     ['mips', 'Less shimmer', 'Stops distant crowds and boards flickering.', true],
+    ['fps', 'Show frame rate', 'Shows frames per second in the corner (60 is full speed).', false],
   ];
   const box = document.getElementById('graphics');
   const restart = document.getElementById('restart');

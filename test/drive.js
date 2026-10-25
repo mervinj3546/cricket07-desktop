@@ -48,6 +48,9 @@ app.on('browser-window-created', (_e, win) => {
             fs.writeFileSync(path.join(OUT, `${rest[0]}.png`), img.resize({ width: 960 }).toPNG());
           } else if (cmd === 'js') {
             log('js', JSON.stringify(await win.webContents.executeJavaScript(rest.join(' '))));
+          } else if (cmd === 'shotsettings') {
+            const sw = BrowserWindow.getAllWindows().find((w) => w.getParentWindow());
+            if (sw) fs.writeFileSync(path.join(OUT, `${rest[0]}.png`), (await sw.webContents.capturePage()).toPNG());
           } else if (cmd === 'crash') win.webContents.forcefullyCrashRenderer();
           else if (cmd === 'exit') realExit(0);
           log('done', lines[done - 1]);

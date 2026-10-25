@@ -20,7 +20,8 @@
   if (!window.GPUDevice) return;
   const q = new URLSearchParams(location.search);
   const cfg = (window.c07Enhance = { fxaa: q.get('fxaa') !== '0', aniso: q.get('aniso') !== '0', mips: q.get('mips') !== '0',
-    sharpen: q.get('sharpen') === '0' ? 0 : 0.5, vivid: q.get('vivid') === '1', wide: q.get('wide') === '1', msaa: q.get('msaa') === '1', upscale: q.get('upscale') === '1' });
+    sharpen: q.get('sharpen') === '0' ? 0 : 0.5, vivid: q.get('vivid') === '1', wide: q.get('wide') === '1', msaa: q.get('msaa') === '1', upscale: q.get('upscale') === '1',
+    auto: q.get('auto') !== '0', level: Math.max(0, Math.min(3, +q.get('level') || 0)), fps: q.get('fps') === '1', scale: 1, sharpenBoost: 0 });
 
   // ---- sharper textures
   const createSampler = GPUDevice.prototype.createSampler;
@@ -151,6 +152,7 @@ struct VO { @builtin(position) pos: vec4f, @location(0) uv: vec2f };
 }
 @fragment fn fs(in: VO) -> @location(0) vec4f { return vec4f(textureSampleLevel(src, smp, in.uv, 0.0).rgb, 1.0); }`;
 
+  const speed = { frames: 0, scenes: 0 };   // counted for 'keep the game smooth' (below)
   let failed = false, linear = null, ubuf = null;
   const temps = [null, null];
   const tempTex = (i, w, h, format) => {
@@ -194,6 +196,7 @@ struct VO { @builtin(position) pos: vec4f, @location(0) uv: vec2f };
   const copyTextureToTexture = GPUCommandEncoder.prototype.copyTextureToTexture;
   GPUCommandEncoder.prototype.copyTextureToTexture = function (source, destination, size) {
     const s = source.texture, d = destination.texture;
+    if (canvasTextures.has(d)) speed.frames++;
     let w = size.width ?? size[0], h = size.height ?? size[1] ?? 1;
     // the whole frame image, copied to the top-left of the (same size or slightly larger) screen
     const atZero = (o) => !o || ((o.x ?? o[0] ?? 0) === 0 && (o.y ?? o[1] ?? 0) === 0 && (o.z ?? o[2] ?? 0) === 0);
@@ -207,7 +210,7 @@ struct VO { @builtin(position) pos: vec4f, @location(0) uv: vec2f };
       try {
         if (!linear) linear = createSampler.call(device, { minFilter: 'linear', magFilter: 'linear' });
         if (!ubuf) ubuf = device.createBuffer({ size: 16, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
-        device.queue.writeBuffer(ubuf, 0, new Float32Array([cfg.sharpen, cfg.vivid ? 1.2 : 1, 1, 0]));
+        device.queue.writeBuffer(ubuf, 0, new Float32Array([cfg.sharpen && Math.min(1, cfg.sharpen + cfg.sharpenBoost), cfg.vivid ? 1.2 : 1, 1, 0]));
         // the steps run at the picture's own size; if the window's size differs (it changed after the game
         // started), a last step scales the result to fill the window instead of leaving a black strip
         const steps = [];
@@ -423,6 +426,9 @@ fn cr(t: f32) -> vec4f {
     let msaaOff = false;
     cfg.msaaActive = true;
     const off = (why) => { if (!msaaOff) { msaaOff = true; cfg.msaaActive = false; console.warn('[enhance] MSAA off:', why); } };
+    // paused by 'keep the game smooth': passes and pipelines go back to the game's own (FXAA takes over)
+    cfg.setMsaa = (on) => { cfg.msaaPaused = !on; cfg.msaaActive = on && !msaaOff; };
+    cfg.msaaWorks = () => !msaaOff;
     const big = (d) => { const z = d.size, w = z.width ?? z[0], h = z.height ?? z[1]; return w >= 512 && h >= 384; };
     const msTex = new WeakMap();    // game render target -> its 4x copy
     const msView = new WeakMap();   // view of a game render target -> view of its 4x copy
@@ -509,4 +515,140 @@ fn cr(t: f32) -> vec4f {
       return dev;
     };
   }
+
+  // ---- keep the game smooth (automatic): only when a computer can't keep full speed in play
+  // Frames are counted where the finished picture goes to the screen; only seconds with 3D drawing count (menus
+  // and loading screens can be slow for other reasons). When play stays below full speed, the heaviest effect
+  // eases off one step at a time, least visible first:
+  //   1: Extra-smooth edges -> the light version (FXAA)
+  //   2: draw at 85% of the screen's resolution, a little more sharpening; 3: 75%
+  // A step that doesn't make it faster is undone (the computer is slow for another reason, e.g. its processor),
+  // so no picture is given up for nothing. After a long stretch at full speed it tries one level up again. The
+  // level that worked is reported to the app (console), which starts the game at it next time. Fast computers
+  // never leave level 0.
+  const SCALES = [1, 1, 0.85, 0.75];
+  const FULL = 52, SOLID = 57;   // frames per second: below FULL is slow; SOLID is comfortably at full speed (60)
+  const canvasEl = () => document.getElementById('canvas');
+  function resize() {
+    const c = canvasEl();
+    if (!c || !window.c07?._c07_set_canvas_size) return;
+    const r = c.getBoundingClientRect(), dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const h = Math.max(480, Math.round(r.height * dpr * cfg.scale));
+    const w = cfg.wide ? Math.max(640, Math.round(r.width * dpr * cfg.scale)) : Math.max(640, Math.round(h * 4 / 3));
+    if (c.width === w && c.height === h) return;
+    c.width = w; c.height = h;
+    window.c07._c07_set_canvas_size(w, h);
+  }
+  // a level is possible if it changes something here: no MSAA means no step 1; no smaller scale below 720 lines
+  function possible(level) {
+    if (level === 1) return !!(cfg.msaa && cfg.msaaWorks?.());
+    const c = canvasEl();
+    if (!c) return false;
+    const lines = c.getBoundingClientRect().height * Math.min(window.devicePixelRatio || 1, 2);
+    return lines * SCALES[level] >= 720;
+  }
+  function apply(level) {
+    cfg.level = level;
+    if (cfg.setMsaa) cfg.setMsaa(level < 1);
+    cfg.scale = SCALES[level];
+    cfg.sharpenBoost = level >= 2 ? 0.25 : 0;
+    resize();
+  }
+  cfg.applyLevel = apply;
+  let toastShown = false;
+  function notice(text) {
+    const d = document.createElement('div');
+    d.textContent = text;
+    d.style.cssText = 'position:fixed;left:50%;bottom:28px;transform:translateX(-50%);z-index:9;padding:8px 18px;border-radius:99px;' +
+      'background:rgba(0,0,0,.7);color:#fff;font:14px -apple-system,system-ui,sans-serif;pointer-events:none;opacity:0;transition:opacity .6s';
+    document.body.appendChild(d);
+    setTimeout(() => { d.style.opacity = '1'; }, 50);
+    setTimeout(() => { d.style.opacity = '0'; }, 5000);
+    setTimeout(() => d.remove(), 6000);
+  }
+  const report = () => console.log('[enhance] speed level ' + cfg.level);
+
+  if (cfg.auto && cfg.level) {
+    // start at the level that worked last time, once the game's canvas is there
+    const wait = setInterval(() => { if (window.c07?._c07_set_canvas_size) { clearInterval(wait); apply(cfg.level); } }, 500);
+  }
+  cfg.setAuto = (on) => {
+    cfg.auto = on;
+    if (!on && cfg.level) { apply(0); report(); }
+    plan = { state: 'watch', samples: [] };
+  };
+
+  // 3D drawing (passes with a depth buffer) marks the seconds that count
+  const bpassSpeed = GPUCommandEncoder.prototype.beginRenderPass;
+  GPUCommandEncoder.prototype.beginRenderPass = function (d) {
+    if (d && d.depthStencilAttachment) speed.scenes++;
+    return bpassSpeed.call(this, d);
+  };
+
+  let plan = { state: 'watch', samples: [] }, stuck = false, meter = null, last = performance.now();
+  let solidRun = 0;              // seconds of play in a row at full speed
+  const probeFailed = new Set(); // levels this session couldn't go back up from
+  const median = (a) => { const b = [...a].sort((x, y) => x - y); return b[b.length >> 1]; };
+  const go = (level, state, extra) => { plan = { state, samples: [], from: cfg.level, ...extra }; apply(level); };
+  setInterval(() => {
+    const now = performance.now(), sec = (now - last) / 1000;
+    last = now;
+    const fps = speed.frames / sec, scene = speed.scenes > 0;
+    speed.frames = 0; speed.scenes = 0;
+    // frame-rate meter (Settings: Show frame rate)
+    if (cfg.fps && !meter) {
+      meter = document.createElement('div');
+      meter.style.cssText = 'position:fixed;top:8px;right:10px;z-index:9;padding:2px 8px;border-radius:6px;background:rgba(0,0,0,.55);' +
+        'color:#cfe9d6;font:12px ui-monospace,Menlo,monospace;pointer-events:none';
+      document.body.appendChild(meter);
+    }
+    if (meter) {
+      meter.style.display = cfg.fps ? '' : 'none';
+      meter.textContent = `${Math.round(fps)} fps` + (cfg.level ? ` · smooth ${cfg.level}` : '');
+    }
+    if (!cfg.auto || document.hidden || !scene || sec > 3) { plan.samples = []; solidRun = 0; return; }
+    plan.samples.push(fps);
+    solidRun = fps >= SOLID ? solidRun + 1 : 0;
+    // watching at a lower level: after a long stretch at full speed, try one level up (it may have been a
+    // passing slowdown, or the computer is plugged in now)
+    if (plan.state === 'watch' && cfg.level > 0 && solidRun >= 45 && !probeFailed.has(cfg.level)) {
+      let up = cfg.level - 1;
+      while (up > 0 && !possible(up)) up--;
+      solidRun = 0;
+      go(up, 'probe');
+      console.warn(`[enhance] keep smooth: trying level ${up}`);
+      return;
+    }
+    // seconds of play to judge by (the first second after a change is left out)
+    const n = { watch: 8, verify: 5, probe: 8 }[plan.state];
+    if (plan.samples.length < n + 1) return;
+    const s = plan.samples.slice(1), med = median(s), slow = s.filter((f) => f < FULL).length;
+    if (plan.state === 'watch') {
+      plan.samples.shift();
+      // steadily slow: most seconds below full speed (loading hiccups are a few slow seconds among fast ones)
+      if (stuck || med >= FULL || slow < 6) return;
+      let next = cfg.level + 1;
+      while (next <= 3 && !possible(next)) next++;
+      if (next > 3) return;
+      go(next, 'verify', { before: med });
+      console.warn(`[enhance] keep smooth: ${med.toFixed(1)} fps, level ${next}`);
+    } else if (plan.state === 'verify') {
+      // it must be clearly faster, or the step is undone and the picture stays as it was
+      if (med < plan.before * 1.08 && med < SOLID) {
+        console.warn(`[enhance] keep smooth: level ${cfg.level} didn't help (${med.toFixed(1)} fps), back to ${plan.from}`);
+        go(plan.from, 'watch');
+        stuck = true;
+      } else {
+        report();
+        if (!toastShown) { toastShown = true; notice('Some picture effects eased off to keep the game smooth'); }
+        plan = { state: 'watch', samples: [] };
+      }
+    } else {   // probe: one level up has to stay at full speed
+      if (slow >= 3) {
+        console.warn(`[enhance] keep smooth: level ${cfg.level} too slow (${med.toFixed(1)} fps), back to ${plan.from}`);
+        probeFailed.add(plan.from);
+        go(plan.from, 'watch');
+      } else { report(); plan = { state: 'watch', samples: [] }; }
+    }
+  }, 1000);
 })();

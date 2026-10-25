@@ -43,16 +43,19 @@ const ENGINE_DIR = () => userFile('engine');
 // ---------------------------------------------------------------- settings
 
 const SETTINGS = () => userFile('settings.json');
-const DEFAULTS = { realNames: true, fxaa: true, aniso: true, mips: true, sharpen: true, vivid: false, wide: true, msaa: true, upscale: true, skipIntro: true, autoUpdate: true };
+const DEFAULTS = { realNames: true, fxaa: true, aniso: true, mips: true, sharpen: true, vivid: false, wide: true, msaa: true, upscale: true, auto: true, fps: false, skipIntro: true, autoUpdate: true };
 const settings = () => { try { return { ...DEFAULTS, ...JSON.parse(fs.readFileSync(SETTINGS(), 'utf8')) }; } catch { return { ...DEFAULTS }; } };
 const saveSettings = (s) => fs.writeFileSync(SETTINGS(), JSON.stringify(s, null, 2));
 const gfxQuery = (s) => [s.fxaa ? '' : 'fxaa=0', s.aniso ? '' : 'aniso=0', s.mips ? '' : 'mips=0',
-  s.sharpen ? '' : 'sharpen=0', s.vivid ? 'vivid=1' : '', s.wide ? 'wide=1' : '', s.msaa ? 'msaa=1' : '', s.upscale ? 'upscale=1' : ''].filter(Boolean).join('&');
+  s.sharpen ? '' : 'sharpen=0', s.vivid ? 'vivid=1' : '', s.wide ? 'wide=1' : '', s.msaa ? 'msaa=1' : '', s.upscale ? 'upscale=1' : '',
+  s.auto ? (s.autoLevel ? `level=${s.autoLevel}` : '') : 'auto=0', s.fps ? 'fps=1' : ''].filter(Boolean).join('&');
 // settings that switch while the game runs (the others apply when the game starts)
 const LIVE = {
   fxaa: (v) => `window.c07Enhance.fxaa = ${v}`,
   sharpen: (v) => `window.c07Enhance.sharpen = ${v ? 0.5 : 0}`,
   vivid: (v) => `window.c07Enhance.vivid = ${v}`,
+  auto: (v) => `window.c07Enhance.setAuto?.(${v})`,
+  fps: (v) => `window.c07Enhance.fps = ${v}`,
 };
 const MAC = process.platform === 'darwin';
 
@@ -89,7 +92,7 @@ function adapt(rel, buf) {
     // (enhance.js) is on, which draws the scene at the window's own shape
     text = text.replace(
       /canvas\.width = Math\.max\(640, Math\.round\(r\.width \* dpr\)\);\s*canvas\.height = Math\.max\(480, Math\.round\(r\.height \* dpr\)\);/,
-      'canvas.height = Math.max(480, Math.round(r.height * dpr));\n  canvas.width = window.c07Enhance?.wide ? Math.max(640, Math.round(r.width * dpr)) : Math.max(640, Math.round(canvas.height * 4 / 3));');
+      'const sc = window.c07Enhance?.scale || 1;\n  canvas.height = Math.max(480, Math.round(r.height * dpr * sc));\n  canvas.width = window.c07Enhance?.wide ? Math.max(640, Math.round(r.width * dpr * sc)) : Math.max(640, Math.round(canvas.height * 4 / 3));');
   } else return buf;
   return Buffer.from(text);
 }
@@ -275,6 +278,10 @@ function createWindow() {
     const m = e.message || '';
     if (/^\[kernel32\] (ExitProcess|TerminateProcess)\(/.test(m)) setTimeout(() => app.exit(0), 300);
     else if (/^(Aborted\(|worker sent an error!|guest heap exhausted)/.test(m)) showStopped(m);
+    else if (m.startsWith('[enhance] speed level ')) {
+      const level = +m.slice(22) || 0, s = settings();
+      if (s.auto && (s.autoLevel || 0) !== level) saveSettings({ ...s, autoLevel: level });
+    }
   });
   win.webContents.on('page-title-updated', (e, title) => {
     const a = /^c07:(quit|restart):/.exec(title)?.[1];
@@ -379,7 +386,7 @@ const updateInfo = () => ({ appVersion: app.getVersion(), ...updates.readState()
 ipcMain.handle('settings:get', () => ({ values: settings(), applied, platform: process.platform, updates: updateInfo() }));
 ipcMain.handle('settings:set', (_e, key, value) => {
   if (!(key in DEFAULTS)) return;
-  saveSettings({ ...settings(), [key]: !!value });
+  saveSettings({ ...settings(), [key]: !!value, ...(key === 'auto' ? { autoLevel: 0 } : {}) });
   if (LIVE[key]) win?.webContents.executeJavaScript(`window.c07Enhance && (${LIVE[key](!!value)})`).catch(() => {});
 });
 ipcMain.handle('settings:action', async (_e, name) => {
