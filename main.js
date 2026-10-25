@@ -9,7 +9,7 @@ const path = require('path');
 const fs = require('fs');
 const saves = require('./saves');
 const { takeScreenshot, showScreenshots } = require('./screenshot');
-const { names } = require('./names');
+const { names, stateFor } = require('./names');
 const updates = require('./updates');
 
 const REMOTE = 'https://cricket07.dhaiwat.com/';
@@ -43,7 +43,7 @@ const ENGINE_DIR = () => userFile('engine');
 // ---------------------------------------------------------------- settings
 
 const SETTINGS = () => userFile('settings.json');
-const DEFAULTS = { realNames: true, fxaa: true, aniso: true, mips: true, sharpen: true, vivid: false, wide: true, msaa: true, upscale: true, auto: true, fps: false, skipIntro: true, autoUpdate: true };
+const DEFAULTS = { realNames: true, squads2026: false, fxaa: true, aniso: true, mips: true, sharpen: true, vivid: false, wide: true, msaa: true, upscale: true, auto: true, fps: false, skipIntro: true, autoUpdate: true };
 const settings = () => { try { return { ...DEFAULTS, ...JSON.parse(fs.readFileSync(SETTINGS(), 'utf8')) }; } catch { return { ...DEFAULTS }; } };
 const saveSettings = (s) => fs.writeFileSync(SETTINGS(), JSON.stringify(s, null, 2));
 const gfxQuery = (s) => [s.fxaa ? '' : 'fxaa=0', s.aniso ? '' : 'aniso=0', s.mips ? '' : 'mips=0',
@@ -221,12 +221,12 @@ async function applyIntroSetting() {
 
 async function applyNamesSetting() {
   try {
-    const want = settings().realNames ? 'real' : 'original';
-    if ((await names(win, 'status')) !== want) {
-      await win.webContents.executeJavaScript(`document.getElementById('status') && (document.getElementById('status').textContent = 'Updating player names…'); 0`);
+    const s = settings(), want = { names: !!s.realNames, squads: !!s.squads2026 };
+    if ((await names(win, 'status')) !== stateFor(want)) {
+      await win.webContents.executeJavaScript(`document.getElementById('status') && (document.getElementById('status').textContent = 'Updating players…'); 0`);
       await names(win, want);
     }
-  } catch (err) { console.error('player names:', err); }
+  } catch (err) { console.error('players:', err); }
 }
 
 // Ends the page's process on purpose (to restart the game or work on its storage).
