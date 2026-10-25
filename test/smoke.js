@@ -127,12 +127,15 @@ app.on('browser-window-created', (_e, win) => {
         // 7. save backups folder
         const backups = path.join(app.getPath('documents'), `${app.getName()} Saves`);
         log('save backups folder exists:', fs.existsSync(backups));
-        // 8. Quit from the game's main menu (QUIT is the 7th item, then 'Yes'): the app should close itself.
+        // 8. Quit from the game's main menu, then 'Yes': the app should close itself. Back (W) a few times
+        // reaches the main menu from wherever the menu keys above ended up (slow machines drop some), and Up
+        // from its first item wraps round to QUIT, the last.
         // If the engine already stopped during play (software graphics can starve its sound), the menu keys
         // below do nothing and the check falls through to the 'game has stopped' screen.
         if ((await js(win, `!!document.getElementById('c07-stopped')`)) === true)
           log('NOTE: the engine stopped during play, before the Quit step');
-        for (let i = 0; i < 6; i++) await key(win, 'Down');
+        for (let i = 0; i < 3; i++) { await key(win, 'W'); await sleep(5000); }
+        await key(win, 'Up');
         await sleep(3000); await shot(win, 'quit-selected');
         await key(win, 'S'); await sleep(8000); await shot(win, 'quit-confirm');
         await key(win, 'Down'); await sleep(2000);
