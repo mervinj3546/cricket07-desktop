@@ -2,6 +2,8 @@
 
 Play **EA Sports Cricket 07** on your computer, offline, with real player names and a sharper widescreen picture.
 
+Free, no ads. If you enjoy it, please give this page a **⭐ Star** (top right) so more cricket fans can find it.
+
 ![A match at Kandy in widescreen](docs/stadium.jpg)
 
 ## ⬇️ Download
@@ -14,6 +16,9 @@ Play **EA Sports Cricket 07** on your computer, offline, with real player names 
 
 **Not sure which Mac you have?** Click the Apple menu  in the top-left corner and choose **About This Mac**.
 If it says **Chip: Apple M…**, take the Apple chip version. If it says **Processor: Intel**, take the Intel version.
+
+**What you need:** macOS 12 (Monterey) or newer, or Windows 10 or 11. On Windows, the graphics card needs
+DirectX 12 (most PCs and laptops from 2016 onwards). About 1.5 GB of free space and an internet connection for the first launch.
 
 All versions and what changed in each: [releases page](https://github.com/udeshvirk/cricket07-desktop/releases).
 
@@ -79,6 +84,22 @@ The game only remembers changes you save there.
 ![Batting view, with Shahid Afridi on the scoreboard](docs/batting.jpg)
 
 **Not included:** online multiplayer. For that, play on [the website](https://cricket07.dhaiwat.com).
+
+## Something not working?
+
+**Black screen, or the game doesn't start**
+- On the first launch, give it a few minutes: the game is downloading. Look for a small line of text in the middle of the screen showing progress.
+- Press **⌘R** (Ctrl+R on Windows) to restart the game.
+- If a message says no graphics adapter was found, your graphics card can't run the game. On Windows, update your
+  graphics driver (from Intel, NVIDIA or AMD's website) and try again.
+- Open **Settings** (⌘, or Ctrl+,) and switch off **Extra-smooth edges**, **HD textures** and **Widescreen**, then restart.
+
+**The download stopped:** check your internet, then press **⌘R** (Ctrl+R). It carries on where it left off.
+
+**Mac says the app can't be opened or checked:** follow steps 3 and 4 of [Install on a Mac](#install-on-a-mac).
+
+**Still stuck?** [Tell us here](https://github.com/udeshvirk/cricket07-desktop/issues). Please say whether you use
+a Mac or Windows, which computer it is, and add a photo or screenshot of the screen. That helps us fix it quickly.
 
 ## Credits
 
