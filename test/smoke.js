@@ -28,6 +28,10 @@ if (process.env.SOFTWARE_GPU) {
 }
 process.on('uncaughtException', (e) => log('MAIN EXCEPTION', e.stack));
 
+// the app closes itself when the game quits (main.js); note it instead, so the test can finish
+const realExit = app.exit.bind(app);
+let appExitAt = 0;
+app.exit = (code) => { if (!appExitAt) { appExitAt = Date.now(); log('app.exit called by the app, code', code); } };
 require('../main.js');
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -60,7 +64,7 @@ let started = false;
 app.on('browser-window-created', (_e, win) => {
   if (win.getParentWindow() || started) return;
   started = true;
-  win.webContents.on('console-message', (e) => fs.appendFileSync(path.join(OUT, 'page-console.txt'), e.message + '\n'));
+  win.webContents.on('console-message', (e) => fs.appendFileSync(path.join(OUT, 'page-console.txt'), `[${((Date.now() - t0) / 1000).toFixed(1)}s] ${e.message}\n`));
   win.webContents.on('render-process-gone', (_e, d) => log('RENDERER GONE', d.reason));
   (async () => {
     try {
@@ -123,6 +127,16 @@ app.on('browser-window-created', (_e, win) => {
         // 7. save backups folder
         const backups = path.join(app.getPath('documents'), `${app.getName()} Saves`);
         log('save backups folder exists:', fs.existsSync(backups));
+        // 8. Quit from the game's main menu (QUIT is the 7th item, then 'Yes'): the app should close itself
+        for (let i = 0; i < 6; i++) await key(win, 'Down');
+        await sleep(3000); await shot(win, 'quit-selected');
+        await key(win, 'S'); await sleep(8000); await shot(win, 'quit-confirm');
+        await key(win, 'Down'); await sleep(2000);
+        const quitAt = Date.now();
+        await key(win, 'S');
+        while (!appExitAt && Date.now() - quitAt < 60000) await sleep(500);
+        if (appExitAt) log('app closed itself', ((appExitAt - quitAt) / 1000).toFixed(1), 's after Quit');
+        else { await shot(win, 'quit-stuck'); fail('the app did not close after Quit in the game menu'); }
       }
     } catch (err) {
       fail('test crashed: ' + (err.stack || err));
@@ -130,6 +144,6 @@ app.on('browser-window-created', (_e, win) => {
     const summary = failures ? `${failures} problem(s) found` : 'all checks passed';
     log('DONE:', summary);
     fs.writeFileSync(path.join(OUT, 'result.txt'), summary + '\n');
-    app.exit(failures ? 1 : 0);
+    realExit(failures ? 1 : 0);
   })();
 });
