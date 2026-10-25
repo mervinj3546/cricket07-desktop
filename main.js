@@ -162,10 +162,9 @@ let applied = {};   // the settings the running game started with
 // Loads the page and waits until the game files are in place (the first launch downloads them),
 // then runs any pending tasks and starts solo play, skipping the Solo / Multiplayer screen.
 async function startGame(beforePlay) {
-  if (!win.webContents.isCrashed()) {
-    // a running game keeps the page too busy to navigate away, so end its process first
-    if (win.webContents.getURL()) win.webContents.forcefullyCrashRenderer();
-  }
+  gameStopped = false;
+  // a running game keeps the page too busy to navigate away, so end its process first
+  if (win.webContents.getURL()) endPage();
   applied = settings();
   await win.loadURL(START_URL + '?' + gfxQuery(applied)).catch(() => {});
   for (;;) {
@@ -227,6 +226,42 @@ async function applyNamesSetting() {
   } catch (err) { console.error('player names:', err); }
 }
 
+// Ends the page's process on purpose (to restart the game or work on its storage).
+let endedAt = 0;
+function endPage() {
+  if (win.webContents.isCrashed()) return;
+  endedAt = Date.now();
+  win.webContents.forcefullyCrashRenderer();
+}
+
+// The engine can stop by itself: on slow machines its sound system can get stuck in a loop and crash, often
+// right after Quit in the game's menu. Instead of a frozen picture, say so and offer Quit / Start again.
+let gameStopped = false;
+const STOPPED_HTML = `<div style="position:absolute;inset:0;margin:auto;width:max-content;height:max-content;text-align:center;
+  padding:28px 36px;border-radius:14px;background:rgba(10,18,12,.94);color:#eef4ef;font:16px -apple-system,system-ui,sans-serif">
+  <div style="font-size:20px;font-weight:600;margin-bottom:8px">The game has stopped</div>
+  <div style="color:#9fb3a5;margin-bottom:20px">If you chose Quit in the game, choose Quit here too.</div>
+  <button data-c07="quit" style="font:inherit;padding:8px 22px;margin:0 6px;border-radius:8px;border:0;background:#2c6b3c;color:#fff;cursor:pointer">Quit (Esc)</button>
+  <button data-c07="restart" style="font:inherit;padding:8px 22px;margin:0 6px;border-radius:8px;border:0;background:#3a463d;color:#fff;cursor:pointer">Start again (Enter)</button>
+</div>`;
+// the buttons report through the page title (the page has no other way to reach the app)
+const STOPPED_JS = `(() => {
+  document.getElementById('c07-stopped')?.remove();
+  const d = document.createElement('div');
+  d.id = 'c07-stopped';
+  d.style.cssText = 'position:fixed;inset:0;z-index:20;background:rgba(0,0,0,.55)';
+  d.innerHTML = ${JSON.stringify(STOPPED_HTML)};
+  d.addEventListener('click', (e) => { const a = e.target.dataset?.c07; if (a) document.title = 'c07:' + a + ':' + Date.now(); });
+  document.body.appendChild(d);
+  document.exitPointerLock?.();
+})()`;
+function showStopped(why) {
+  if (gameStopped) return;
+  gameStopped = true;
+  console.error('game stopped:', why);
+  win.webContents.executeJavaScript(STOPPED_JS).catch(() => {});
+}
+
 function createWindow() {
   win = new BrowserWindow({
     width: 1280, height: 860, minWidth: 800, minHeight: 600, fullscreen: true,
@@ -237,7 +272,21 @@ function createWindow() {
 
   // Quit in the game's own menu stops the game but leaves its last frame on screen; close the app instead.
   win.webContents.on('console-message', (e) => {
-    if (/^\[kernel32\] (ExitProcess|TerminateProcess)\(/.test(e.message || '')) setTimeout(() => app.exit(0), 300);
+    const m = e.message || '';
+    if (/^\[kernel32\] (ExitProcess|TerminateProcess)\(/.test(m)) setTimeout(() => app.exit(0), 300);
+    else if (/^(Aborted\(|worker sent an error!|guest heap exhausted)/.test(m)) showStopped(m);
+  });
+  win.webContents.on('page-title-updated', (e, title) => {
+    const a = /^c07:(quit|restart):/.exec(title)?.[1];
+    if (!a || !gameStopped) return;
+    e.preventDefault();
+    if (a === 'quit') app.exit(0); else startGame();
+  });
+  // the page's process ended without being asked to (out of memory, a crash): same message, on a plain page
+  win.webContents.on('render-process-gone', (_e, d) => {
+    if (Date.now() - endedAt < 5000 || d.reason === 'clean-exit') return;
+    gameStopped = false;
+    win.loadURL(`${SCHEME}://app/blank.html`).then(() => showStopped('page process ' + d.reason)).catch(() => {});
   });
 
   // In front: keep the display awake (controller play doesn't count as activity). Switched away: mute.
@@ -256,6 +305,10 @@ function createWindow() {
   // Catch them here first, before the game sees them.
   win.webContents.on('before-input-event', (event, input) => {
     if (input.type !== 'keyDown' || input.alt) return;
+    if (gameStopped && !input.meta && !input.control) {
+      if (input.key === 'Escape') { event.preventDefault(); app.exit(0); return; }
+      if (input.key === 'Enter') { event.preventDefault(); startGame(); return; }
+    }
     if (!MAC && input.key === 'F11') { event.preventDefault(); win.setFullScreen(!win.isFullScreen()); return; }
     if (!(MAC ? input.meta : input.control)) return;
     const k = input.key.toLowerCase();
@@ -352,7 +405,7 @@ ipcMain.handle('settings:action', async (_e, name) => {
         close();
         // With the game stopped, put the game data back to the exact original (real names are re-applied as
         // the game starts). Otherwise its changed size makes the new launcher download it all again.
-        if (!win.webContents.isCrashed()) win.webContents.forcefullyCrashRenderer();
+        endPage();
         await win.loadURL(`${SCHEME}://app/blank.html`).catch(() => {});
         await names(win, 'original').catch(() => {});
         startGame();

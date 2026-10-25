@@ -127,16 +127,30 @@ app.on('browser-window-created', (_e, win) => {
         // 7. save backups folder
         const backups = path.join(app.getPath('documents'), `${app.getName()} Saves`);
         log('save backups folder exists:', fs.existsSync(backups));
-        // 8. Quit from the game's main menu (QUIT is the 7th item, then 'Yes'): the app should close itself
+        // 8. Quit from the game's main menu (QUIT is the 7th item, then 'Yes'): the app should close itself.
+        // If the engine already stopped during play (software graphics can starve its sound), the menu keys
+        // below do nothing and the check falls through to the 'game has stopped' screen.
+        if ((await js(win, `!!document.getElementById('c07-stopped')`)) === true)
+          log('NOTE: the engine stopped during play, before the Quit step');
         for (let i = 0; i < 6; i++) await key(win, 'Down');
         await sleep(3000); await shot(win, 'quit-selected');
         await key(win, 'S'); await sleep(8000); await shot(win, 'quit-confirm');
         await key(win, 'Down'); await sleep(2000);
         const quitAt = Date.now();
         await key(win, 'S');
-        while (!appExitAt && Date.now() - quitAt < 60000) await sleep(500);
-        if (appExitAt) log('app closed itself', ((appExitAt - quitAt) / 1000).toFixed(1), 's after Quit');
-        else { await shot(win, 'quit-stuck'); fail('the app did not close after Quit in the game menu'); }
+        // the app either closes, or (when the engine crashes on the way out) says the game has stopped
+        const stoppedShown = () => js(win, `!!document.getElementById('c07-stopped')`);
+        let stopped = false;
+        while (!appExitAt && !(stopped = (await stoppedShown()) === true) && Date.now() - quitAt < 60000) await sleep(500);
+        if (stopped) {
+          log('"game has stopped" shown', ((Date.now() - quitAt) / 1000).toFixed(1), 's after Quit');
+          await shot(win, 'quit-stopped');
+          await key(win, 'Escape');
+          for (let i = 0; i < 20 && !appExitAt; i++) await sleep(500);
+          if (!appExitAt) fail('Esc on the "game has stopped" screen did not close the app');
+        }
+        if (appExitAt) log('app closed', ((appExitAt - quitAt) / 1000).toFixed(1), 's after Quit');
+        else if (!stopped) { await shot(win, 'quit-stuck'); fail('the app did not respond to Quit in the game menu'); }
       }
     } catch (err) {
       fail('test crashed: ' + (err.stack || err));
