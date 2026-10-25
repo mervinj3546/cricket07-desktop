@@ -121,8 +121,11 @@ app.on('browser-window-created', (_e, win) => {
         const pics = path.join(app.getPath('pictures'), `${app.getName()} Screenshots`);
         const before = fs.existsSync(pics) ? fs.readdirSync(pics).length : 0;
         await key(win, 'S', [MOD, 'shift']);
-        await sleep(3000);
-        const after = fs.existsSync(pics) ? fs.readdirSync(pics).length : 0;
+        let after = before;
+        for (let i = 0; i < 30 && after <= before; i++) {   // software graphics: capturing can take a while
+          await sleep(1000);
+          after = fs.existsSync(pics) ? fs.readdirSync(pics).length : 0;
+        }
         if (after > before) log('screenshot shortcut saved a file in', pics);
         else fail('screenshot shortcut saved nothing');
         // 7. save backups folder
