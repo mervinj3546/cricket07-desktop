@@ -53,5 +53,6 @@ Skip intro = rename OPFS `Data/eaep.vp6` → `eaep.vp6.skip` before the game sta
 
 ## Known limits
 - Online multiplayer doesn't work in the app.
+- Electron 44+ needs macOS 13 (Ventura) or newer: Monterey players stay on app 1.6.0 (Electron 38).
 - The licence screen at startup is a still image in the game, not skippable like the intro movie.
 - Dhaiwat hasn't replied to https://github.com/Dhaiwat10/cricket07-browser/issues/1 (credit/permission note).
