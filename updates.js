@@ -36,7 +36,8 @@ const md5 = (file) => { try { return crypto.createHash('md5').update(fs.readFile
 // page is compared without it (and without the port's own analytics snippet)
 const normalizePage = (text) => text
   .replace(/<script[^>]*static\.cloudflareinsights\.com[^>]*><\/script>\s*/g, '')
-  .replace(/<!-- Cloudflare Web Analytics[\s\S]*?<\/script>\s*/g, '');
+  .replace(/<!-- Cloudflare Web Analytics[\s\S]*?<\/script>\s*/g, '')
+  .replace(/(<span id="visits">)[^<]*/g, '$1');   // the page's visit counter (Oct 2026) changes all the time
 const tagOf = (res) => (res.headers.get('etag') || '').replace(/^W\//, '').replace(/"/g, '');
 
 // Files to compare: the scripts and engine, plus the list of game files (images rarely matter)

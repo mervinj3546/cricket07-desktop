@@ -141,11 +141,14 @@ function legendsPatch(name, data, SQUADS) {
       s = s.replace(mine, l);
     }
   } else if (name === F.kits) {
+    // the Legends side wears its slot's own kit files (location), which kitFiles fills with the country's kit
     for (const t of L.teams) {
-      const nat = line(new RegExp(`<team name="[^"]*"([^>]*) id="${t.from}">([\\s\\S]*?)</team>`));
-      const mine = line(new RegExp(`<team name="[^"]*"([^>]*) id="${t.block}">([\\s\\S]*?)</team>`));
-      const k = t.ownKit ? mine : nat;   // an A team's own kit (a different shade), so it stands apart from today's side
-      s = s.replace(mine[0], `<team name="${t.name}"${k[1]} id="${t.block}">${k[2]}</team>`);
+      const nat = line(new RegExp(`<team name="[^"]*"[^>]* id="${t.from}">([\\s\\S]*?)</team>`));
+      const mine = line(new RegExp(`<team name="[^"]*"[^>]* id="${t.block}">[\\s\\S]*?</team>`))[0];
+      let body = nat[1];
+      if (t.kit.name) body = body.replace(/(<kit name="Coloured"[^>]*?\snamecolour=")[^"]*/, `$1${t.kit.name}`);
+      if (t.kit.number) body = body.replace(/(<kit name="Coloured"[^>]*?\snumbercolour=")[^"]*/, `$1${t.kit.number}`);
+      s = s.replace(mine, `<team name="${t.name}" location="${t.kit.slot}" id="${t.block}">${body}</team>`);
     }
   } else if (F.screens.includes(name) || F.strings.includes(name)) {
     // The category label, kept the same length as "Australian State" (some screens are binary and would break
@@ -160,4 +163,39 @@ function legendsPatch(name, data, SQUADS) {
   return o;
 }
 
-if (typeof module !== 'undefined') module.exports = { applySquads, legendsPatch };
+// The Legends kits: a country's kit textures (EA FSH: 32-bit BGRA or DXT) in a different shade. Colours whose hue is
+// in tint.only (all if absent) get the hue shift and lightness/saturation factors; tint.greys scales dark greys.
+function tintFsh(d, tint) {
+  const o = new Uint8Array(d), u16 = (p) => o[p] | o[p + 1] << 8, u32 = (p) => (o[p] | o[p + 1] << 8 | o[p + 2] << 16 | o[p + 3] << 24) >>> 0;
+  const cache = new Map();
+  const rgb = (r, g, b) => {
+    const k = r << 16 | g << 8 | b; if (cache.has(k)) return cache.get(k);
+    let R = r / 255, G = g / 255, B = b / 255; const mx = Math.max(R, G, B), mn = Math.min(R, G, B), dd = mx - mn;
+    let h = 0, sa = 0, l = (mx + mn) / 2, out = [r, g, b];
+    if (dd) { sa = l > 0.5 ? dd / (2 - mx - mn) : dd / (mx + mn); h = 60 * (mx === R ? (G - B) / dd + (G < B ? 6 : 0) : mx === G ? (B - R) / dd + 2 : (R - G) / dd + 4); }
+    const on = !tint.only || (tint.only[0] <= tint.only[1] ? h >= tint.only[0] && h <= tint.only[1] : h >= tint.only[0] || h <= tint.only[1]);
+    let change = false;
+    if (sa >= 0.2 && on) { h = (h + (tint.hue || 0) + 360) % 360; l = Math.min(1, l * (tint.light || 1)); sa = Math.min(1, sa * (tint.sat || 1)); change = true; }
+    else if (sa < 0.2 && tint.greys && l < 0.6) { l = Math.min(1, l * tint.greys); change = true; }
+    if (change) {
+      const q = l < 0.5 ? l * (1 + sa) : l + sa - l * sa, p = 2 * l - q;
+      const f = (t) => { t = ((t % 360) + 360) % 360 / 360; return t < 1 / 6 ? p + (q - p) * 6 * t : t < 1 / 2 ? q : t < 2 / 3 ? p + (q - p) * (2 / 3 - t) * 6 : p; };
+      out = [Math.round(f(h + 120) * 255), Math.round(f(h) * 255), Math.round(f(h - 120) * 255)];
+    }
+    cache.set(k, out); return out;
+  };
+  const to565 = ([r, g, b]) => (r * 31 / 255 + 0.5 | 0) << 11 | (g * 63 / 255 + 0.5 | 0) << 5 | (b * 31 / 255 + 0.5 | 0);
+  const from565 = (v) => [((v >> 11) & 31) * 255 / 31 + 0.5 | 0, ((v >> 5) & 63) * 255 / 63 + 0.5 | 0, (v & 31) * 255 / 31 + 0.5 | 0];
+  if (String.fromCharCode(o[0], o[1], o[2], o[3]) !== 'SHPI') throw new Error('kit: not an FSH texture');
+  for (let i = 0, n = u32(8); i < n; i++) {
+    const at = u32(20 + 8 * i), type = o[at], w = u16(at + 4), h = u16(at + 6), px = at + 16;
+    if (type === 0x7d) {                                   // 32-bit BGRA
+      for (let p = px, e = px + w * h * 4; p < e; p += 4) { const [r, g, b] = rgb(o[p + 2], o[p + 1], o[p]); o[p] = b; o[p + 1] = g; o[p + 2] = r; }
+    } else if (type === 0x61 || type === 0x62) {           // DXT3/DXT5: 4-colour blocks, endpoint order doesn't matter
+      for (let p = px, e = px + w * h; p < e; p += 16) for (const c of [p + 8, p + 10]) { const v = to565(rgb(...from565(u16(c)))); o[c] = v & 255; o[c + 1] = v >> 8; }
+    } else throw new Error('kit: texture type ' + type);
+  }
+  return o;
+}
+
+if (typeof module !== 'undefined') module.exports = { applySquads, legendsPatch, tintFsh };
