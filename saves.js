@@ -95,7 +95,7 @@ async function backupNow(win) {
     const dest = path.join(MANUAL(), stamp());
     writeBackup(files, dest);
     const { response } = await dialog.showMessageBox(win, {
-      message: 'Saves backed up.', detail: dest, buttons: ['OK', 'Show in Finder'], defaultId: 0,
+      message: 'Saves backed up.', detail: dest, buttons: ['OK', process.platform === 'darwin' ? 'Show in Finder' : 'Show Folder'], defaultId: 0,
     });
     if (response === 1) shell.showItemInFolder(dest);
   } catch (err) { dialog.showErrorBox('Backup failed', String(err)); }

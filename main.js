@@ -112,7 +112,7 @@ async function engineFile(rel) {
 
 const FIRST_RUN_OFFLINE = `<!doctype html><meta charset="utf-8"><title>Cricket 07</title>
 <body style="margin:0;height:100vh;display:grid;place-items:center;background:#070b08;color:#eef4ef;font:16px -apple-system,sans-serif;text-align:center">
-<div><h2>Internet needed for the first launch</h2><p style="color:#9fb3a5;max-width:40ch">The first launch downloads the game (about 1.2 GB).
+<div><h2>Internet needed for the first launch</h2><p style="color:#9fb3a5;max-width:40ch">The first launch downloads the game (about 740 MB, or 440 MB for Lite).
 After that it works offline.<br>Connect to the internet, then choose Game → Restart Game (${process.platform === 'darwin' ? '⌘R' : 'Ctrl+R'}).</p></div></body>`;
 
 const manifestCache = () => userFile('manifest.json');
@@ -470,6 +470,9 @@ function buildMenu() {
 // and wipe it (game files and saves). A second launch just brings the running game to the front.
 if (!app.requestSingleInstanceLock()) app.exit(0);
 app.on('second-instance', () => { if (win) { if (win.isMinimized()) win.restore(); win.show(); win.focus(); } });
+
+// Windows shows notifications (Screenshot saved) only for an app ID matching the installer's shortcut
+if (process.platform === 'win32') app.setAppUserModelId('com.github.udeshvirk.cricket07mac');
 
 app.whenReady().then(() => {
   protocol.handle(SCHEME, (request) => handle(request).catch((err) => new Response(String(err), { status: 503, headers: ISOLATION })));
