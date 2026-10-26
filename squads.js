@@ -10,7 +10,9 @@
 // batting hand, similar level), so actions and shot habits fit. Then: name, commentary name, ratings, age,
 // role, batting position, bowling type and batting hand are set; career stats are cleared; nationality and face stay with the
 // record (licensed real faces are swapped for a generic one from the same country).
-function applySquads(orig, out, SQUADS) {
+// With legends on, the 2006 squad players are left as they are (ten other teams become the Legends sides, copied
+// from the 2006 squads) and the 2026 players take over the records of players found only in those ten teams.
+function applySquads(orig, out, SQUADS, legends) {
   const REC = 360, BASE = 4, PLAYERS = 1200, TEAMS = 432004, TEAM = 2808;
   const UP = [0, 2, 4, 6, 7, 8, 10, 11, 12, 14, 16, 17, 19, 21, 23, 24, 25, 26, 28, 29, 31, 32, 34, 35, 37, 38, 40, 41, 43, 44, 46,
     47, 49, 50, 52, 54, 55, 57, 59, 60, 62, 64, 65, 67, 69, 70, 72, 74, 75, 77, 79, 80, 82, 84, 86, 88, 90, 92, 94, 96, 98, 99, 100];
@@ -49,11 +51,30 @@ function applySquads(orig, out, SQUADS) {
   const pool = info.filter((p) => intl.has(p.i));
   const genericFace = (nat) => { const f = faces.get(nat) || [...faces.values()][0]; return f[nextFace++ % f.length]; };
 
+  const squadOf = (t) => { const a = []; for (let k = 0; k < 20; k++) a.push(i16(orig, TEAMS + t * TEAM + 2 * k)); return a; };
+  let donors = null;
+  if (legends) {
+    const L = SQUADS.legends, taken = new Set(L.teams.map((t) => t.block)), inTeams = new Map();
+    for (let t = 0; t < 63; t++) for (const id of squadOf(t)) if (id > 0) inTeams.set(id, (inTeams.get(id) || new Set()).add(t));
+    const national = new Set(SQUADS.teams.flatMap((t) => squadOf(t.team)));
+    const free = (ok) => info.map((p) => i16(orig, at(p.i))).filter((id) => !national.has(id) && [...(inTeams.get(id) || [])].every(ok));
+    donors = [...new Set([...free((t) => taken.has(t)), ...L.spare.flatMap((s) => free((t) => taken.has(t) || t === s))])];
+    // the Legends teams: the 2006 squad, captain and shirt numbers, under the team's own id
+    for (const t of L.teams) {
+      const from = TEAMS + t.from * TEAM, to = TEAMS + t.block * TEAM, id = u16(orig, to + 40);
+      out.set(orig.subarray(from, from + TEAM), to);
+      put16(out, to + 40, id);
+    }
+  }
+
   for (const team of SQUADS.teams) {
     const b = TEAMS + team.team * TEAM;
-    const old = [];
-    for (let k = 0; k < 20; k++) old.push(i16(orig, b + 2 * k));
+    const old = squadOf(team.team);
     if (old.some((id) => !byId.has(id))) throw new Error(`team ${team.team}: unexpected squad`);
+    // the country of the 2006 squad (most common nationality), for players moved into other records
+    const nats = old.map((id) => u32(orig, at(byId.get(id)) + 216));
+    const teamNat = nats.sort((x, y) => nats.filter((v) => v === y).length - nats.filter((v) => v === x).length)[0];
+    const ids = [];
     team.players.forEach(([name, role, hand, bowlType, bat, bowl, dob, comm], k) => {
       const want = { type: TYPE[role], bowl: BOWLT[bowlType], left: hand === 'L' ? 1 : 0 };
       let best = null, score = -1e9;
@@ -62,10 +83,12 @@ function applySquads(orig, out, SQUADS) {
           - Math.abs(p.bat - bat) - Math.abs(p.bowling - bowl);
         if (sc > score) { score = sc; best = p; }
       }
-      const r = at(byId.get(old[k])), t = at(best.i);
-      const nat = u32(orig, r + 216), face = u16(orig, r + 356);
+      const id = ids[k] = donors ? donors.shift() : old[k];
+      if (id === undefined) throw new Error('not enough free player records');
+      const r = at(byId.get(id)), t = at(best.i);
+      const nat = donors ? teamNat : u32(orig, r + 216), face = donors ? 0 : u16(orig, r + 356);
       out.set(orig.subarray(t, t + REC), r);
-      put16(out, r, old[k]);                                  // keep the record's id (squads point at it)
+      put16(out, r, id);                                      // keep the record's id (squads point at it)
       put16(out, r + 2, comm ?? 0xffff);                      // commentary name (none unless the game has one)
       out.fill(0, r + 4, r + 20);
       for (let c = 0; c < name.length && c < 15; c++) out[r + 4 + c] = name.charCodeAt(c);
@@ -87,10 +110,54 @@ function applySquads(orig, out, SQUADS) {
       put16(out, r + 356, face >= 40000 ? face : genericFace(nat));
       if (dob) { const [y, m, d] = dob.split('-').map(Number); out[r + 348] = d; out[r + 349] = m - 1; out[r + 350] = y - 1900; }
     });
+    ids.forEach((id, k) => put16(out, b + 2 * k, id));
     const cap = team.players.findIndex((p) => p[0] === team.captain);
-    if (cap >= 0) put16(out, b + 46, old[cap]);
+    if (cap >= 0) put16(out, b + 46, ids[cap]);
   }
   return out;
 }
 
-if (typeof module !== 'undefined') module.exports = { applySquads };
+// The Legends category's names, badges, kits and label. The game has four team categories, fixed in its code;
+// Legends takes the place of Australian State (those teams move to Other). Works on one archive entry at a time:
+// returns the changed bytes, or null for an entry it doesn't change. Text is handled as latin1, byte for byte.
+function legendsPatch(name, data, SQUADS) {
+  // (not playermanager.xml: its colour fields end in the team's own number, and copying them hid the teams)
+  const F = { teams: 'be2970b0ada8e42cf891ce60ffe69575.xml', kits: '730eef3fd7726e43de955f21083ab000.xml',
+    screens: ['17a9f0c56eaaeb65f3773e549620b95f.big', '986991c00c460e84461a2a84bbf0c52e.big', 'da73a7807e518c0d6ced209d547a0068.big'],
+    strings: ['dc371d84ed78d4cf88a641a8d8abc38a.english', '1e970ae67ff9693610fa98ce27f928ab.english'] };
+  if (name === 'entries') return [F.teams, F.kits, ...F.screens, ...F.strings];
+  const L = SQUADS.legends;
+  let s = ''; for (let i = 0; i < data.length; i += 8192) s += String.fromCharCode.apply(null, data.subarray(i, i + 8192));
+  const fail = (what) => { throw new Error(`legends: ${what} not found in ${name}`); };
+  const attr = (line, a) => (line.match(new RegExp(`\\s${a}="([^"]*)"`)) || fail(a))[1];
+  const setAttr = (line, a, v) => (attr(line, a), line.replace(new RegExp(`(\\s${a}=)"[^"]*"`), `$1"${v}"`));
+  const line = (re) => s.match(re) || fail(re.source);
+  if (name === F.teams) {
+    s = s.replace(/StandardOfCricket="1"/g, 'StandardOfCricket="3"');
+    for (const t of L.teams) {
+      const nat = line(new RegExp(`<team Index="${t.from}"\\s[^>]*>`))[0], mine = line(new RegExp(`<team Index="${t.block}"\\s[^>]*>`))[0];
+      let l = setAttr(mine, 'TeamName', t.name); l = setAttr(l, 'TeamNameShort', t.short); l = setAttr(l, 'Abbreviation', t.abbr);
+      l = setAttr(l, 'LogoAbbreviation', attr(nat, 'LogoAbbreviation')); l = setAttr(l, 'StandardOfCricket', '1');
+      s = s.replace(mine, l);
+    }
+  } else if (name === F.kits) {
+    for (const t of L.teams) {
+      const nat = line(new RegExp(`<team name="[^"]*"([^>]*) id="${t.from}">([\\s\\S]*?)</team>`));
+      const mine = line(new RegExp(`<team name="[^"]*"([^>]*) id="${t.block}">([\\s\\S]*?)</team>`));
+      const k = t.ownKit ? mine : nat;   // an A team's own kit (a different shade), so it stands apart from today's side
+      s = s.replace(mine[0], `<team name="${t.name}"${k[1]} id="${t.block}">${k[2]}</team>`);
+    }
+  } else if (F.screens.includes(name) || F.strings.includes(name)) {
+    // The category label, kept the same length as "Australian State" (some screens are binary and would break
+    // otherwise). The game matches the label against the string table, so both get the same text.
+    const w = 16, c = L.category, label = ' '.repeat((w - c.length) >> 1) + c + ' '.repeat(w - c.length - ((w - c.length) >> 1));
+    const swaps = F.screens.includes(name) ? [['International|Australian State|', `International|${label}|`]]
+      : [['International|Australian State|', `International|${label}|`], ['\x5e\x01Australian State\x00', `\x5e\x01${label}\x00`]];
+    for (const [a, b] of swaps) { if (!s.includes(a)) fail('category label'); s = s.split(a).join(b); }
+  } else return null;
+  const o = new Uint8Array(s.length);
+  for (let i = 0; i < s.length; i++) o[i] = s.charCodeAt(i);
+  return o;
+}
+
+if (typeof module !== 'undefined') module.exports = { applySquads, legendsPatch };

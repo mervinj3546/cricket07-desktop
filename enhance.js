@@ -14,13 +14,13 @@
 //   picture, after FXAA. Both can be switched live.
 // - Widescreen: the game's frame image is made as wide as the screen and the 3D scene is drawn with a wider
 //   view instead of being stretched; 2D (menus, scoreboard) fills the screen as before. Needs a restart.
-// Settings come from the page URL (?aniso=0, ?fxaa=0, ?mips=0, ?sharpen=0, ?vivid=1, ?wide=1) and window.c07Enhance (changed live by the app).
+// Settings come from the page URL (?aniso=0, ?fxaa=0, ?mips=0, ?sharpen=0, ?vivid=1, ?wide=1, ?stage=1: the engine draws widescreen itself) and window.c07Enhance (changed live by the app).
 (() => {
   'use strict';
   if (!window.GPUDevice) return;
   const q = new URLSearchParams(location.search);
   const cfg = (window.c07Enhance = { fxaa: q.get('fxaa') !== '0', aniso: q.get('aniso') !== '0', mips: q.get('mips') !== '0',
-    sharpen: q.get('sharpen') === '0' ? 0 : 0.5, vivid: q.get('vivid') === '1', wide: q.get('wide') === '1', msaa: q.get('msaa') === '1', upscale: q.get('upscale') === '1',
+    sharpen: q.get('sharpen') === '0' ? 0 : 0.5, vivid: q.get('vivid') === '1', wide: q.get('wide') === '1', stage: q.get('stage') === '1', msaa: q.get('msaa') === '1', upscale: q.get('upscale') === '1',
     auto: q.get('auto') !== '0', level: Math.max(0, Math.min(3, +q.get('level') || 0)), fps: q.get('fps') === '1', scale: 1, sharpenBoost: 0 });
 
   // ---- sharper textures
@@ -534,7 +534,7 @@ fn cr(t: f32) -> vec4f {
     if (!c || !window.c07?._c07_set_canvas_size) return;
     const r = c.getBoundingClientRect(), dpr = Math.min(window.devicePixelRatio || 1, 2);
     const h = Math.max(480, Math.round(r.height * dpr * cfg.scale));
-    const w = cfg.wide ? Math.max(640, Math.round(r.width * dpr * cfg.scale)) : Math.max(640, Math.round(h * 4 / 3));
+    const w = cfg.wide || cfg.stage ? Math.max(640, Math.round(r.width * dpr * cfg.scale)) : Math.max(640, Math.round(h * 4 / 3));
     if (c.width === w && c.height === h) return;
     c.width = w; c.height = h;
     window.c07._c07_set_canvas_size(w, h);

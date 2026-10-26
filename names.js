@@ -10,12 +10,14 @@ const path = require('path');
 
 const NAMES = JSON.parse(fs.readFileSync(path.join(__dirname, 'real-names.json'), 'utf8'));
 const SQUADS = JSON.parse(fs.readFileSync(path.join(__dirname, 'squads-2026.json'), 'utf8'));
-const { applySquads } = require('./squads');
+const { applySquads, legendsPatch } = require('./squads');
 // Fingerprint of the squad data and code: a game patched with older squads is rebuilt when it changes
-const SQ_VER = require('crypto').createHash('md5').update(JSON.stringify(SQUADS) + applySquads.toString()).digest('hex').slice(0, 8);
+const SQ_VER = require('crypto').createHash('md5').update(JSON.stringify(SQUADS) + applySquads.toString() + legendsPatch.toString()).digest('hex').slice(0, 8);
 
-const PAGE_JS = `async (NAMES, SQUADS, applySquads, want) => {
+const PAGE_JS = `async (NAMES, SQUADS, LIB, want) => {
+  const { applySquads, legendsPatch } = LIB;
   const ENTRY = '113964e05e69ab31d264fb8f15c58e5c.cdf', REC = 360, MARK = '.names-original.json';
+  const EXTRA = legendsPatch('entries');   // team list, kits and menu screens (Legends teams)
   const root = await navigator.storage.getDirectory();
   let dir, fh;
   try { dir = await root.getDirectoryHandle('c07game'); fh = await (await dir.getDirectoryHandle('Data')).getFileHandle('data.gob'); }
@@ -26,14 +28,15 @@ const PAGE_JS = `async (NAMES, SQUADS, applySquads, want) => {
   if (head.getUint32(0) !== 0x42494746) return 'unknown';   // "BIGF"
   const count = head.getUint32(8), idx = await bytes(16, 16 + head.getUint32(12));
   const iv = new DataView(idx.buffer);
-  let pos = -1, off = 0, size = 0;
+  const where = {};
   for (let p = 0, k = 0; k < count; k++) {
     const o = iv.getUint32(p), s = iv.getUint32(p + 4); let e = p + 8;
     while (idx[e]) e++;
-    if (new TextDecoder('latin1').decode(idx.subarray(p + 8, e)) === ENTRY) { pos = 16 + p; off = o; size = s; break; }
+    where[new TextDecoder('latin1').decode(idx.subarray(p + 8, e))] = { pos: 16 + p, off: o, size: s };   // all entries: the marker may name ones an older version changed
     p = e + 1;
   }
-  if (pos < 0) return 'unknown';
+  if (!where[ENTRY]) return 'unknown';
+  const { pos, off, size } = where[ENTRY];
 
   // RefPack (EA's compression)
   const unpack = (s) => {
@@ -66,7 +69,8 @@ const PAGE_JS = `async (NAMES, SQUADS, applySquads, want) => {
   const cdf = raw[1] === 0xfb ? unpack(raw) : raw;
   const dec = new TextDecoder('latin1');
   const nameAt = (c, i) => { const b = c.subarray(i * REC + 8, i * REC + 24); const z = b.indexOf(0); return dec.decode(z < 0 ? b : b.subarray(0, z)); };
-  const key = (a) => [a.names && 'names', a.squads && (a.squads === true ? 'squads' : 'squads@' + a.squads)].filter(Boolean).join('+') || 'original';
+  const key = (a) => a.pending ? 'partial' : [a.names && 'names', a.squads && (a.squads === true ? 'squads' : 'squads@' + a.squads),
+    a.legends && 'legends'].filter(Boolean).join('+') || 'original';
 
   // What is applied now: the marker says (written with each change); an older app version's marker didn't
   // record it, so then the names themselves tell.
@@ -82,14 +86,16 @@ const PAGE_JS = `async (NAMES, SQUADS, applySquads, want) => {
   const target = want === 'original' ? 'original' : key(want);
   if (state === target) return state;
 
-  const setEntry = async (w, o, s) => {
+  const setEntry = async (w, at, o, s) => {
     const b = new DataView(new ArrayBuffer(8)); b.setUint32(0, o); b.setUint32(4, s);
-    await w.write({ type: 'write', position: pos, data: b.buffer });
+    await w.write({ type: 'write', position: at, data: b.buffer });
   };
+  const saveMark = async () => { const mw = await (await dir.getFileHandle(MARK, { create: true })).createWritable(); await mw.write(JSON.stringify(m)); await mw.close(); };
   if (target === 'original') {
     if (!m) return 'no-original';
     const w = await fh.createWritable({ keepExistingData: true });
-    await setEntry(w, m.off, m.size);
+    await setEntry(w, pos, m.off, m.size);
+    for (const [n, [o, s]] of Object.entries(m.extra || {})) if (where[n]) await setEntry(w, where[n].pos, o, s);
     // also drop the appended list and restore the archive's length, so the file is byte for byte the
     // original again (the port's launcher checks file sizes when its game-file list changes)
     if (m.fileSize && m.fileSize < file.size && m.off + m.size <= m.fileSize) {
@@ -106,37 +112,60 @@ const PAGE_JS = `async (NAMES, SQUADS, applySquads, want) => {
     if (state !== 'original') return 'no-original';   // first time: the current list is the original
     m = { off, size, fileSize: file.size };
   }
+  // the other entries' originals, recorded before they are first changed
+  m.extra = m.extra || {};
+  for (const n of EXTRA) if (where[n] && !(n in m.extra)) {
+    if (where[n].off + where[n].size > m.fileSize) return 'unknown';
+    m.extra[n] = [where[n].off, where[n].size];
+  }
+  const original = async (o, s) => { const r = await bytes(o, o + s); return r[1] === 0xfb ? unpack(r) : r; };
   let base = cdf;
-  if (state !== 'original') { const r = await bytes(m.off, m.off + m.size); base = r[1] === 0xfb ? unpack(r) : r; }
+  if (state !== 'original') base = await original(m.off, m.size);
   const out = new Uint8Array(base);
   if (want.names) for (const [i, , r] of NAMES) {
     const b = new Uint8Array(16);
     for (let k = 0; k < r.length; k++) b[k] = r.charCodeAt(k);
     out.set(b, i * REC + 8);
   }
-  if (want.squads) applySquads(base, out, SQUADS);
-  const packed = pack(out);
-  const end = m.fileSize, at = end + ((16 - end % 16) % 16), total = at + packed.length;
+  if (want.squads) applySquads(base, out, SQUADS, !!want.legends);
+  // everything is built before the archive is touched, so an error leaves it as it was
+  const files = [[pos, pack(out)]], resets = [];
+  for (const n of Object.keys(m.extra)) {
+    if (!where[n]) continue;
+    const changed = want.legends && legendsPatch(n, await original(...m.extra[n]), SQUADS);
+    if (changed) files.push([where[n].pos, pack(changed)]);
+    else resets.push([where[n].pos, ...m.extra[n]]);
+  }
+  m.applied = { pending: true };   // until the archive is written
+  await saveMark();
+  const align = (x) => x + ((16 - x % 16) % 16);
   const w = await fh.createWritable({ keepExistingData: true });
-  await w.truncate(at);
-  await w.write({ type: 'write', position: at, data: packed });
-  await setEntry(w, at, packed.length);
-  const t = new DataView(new ArrayBuffer(4)); t.setUint32(0, total, true);
+  let end = align(m.fileSize), last = end;
+  await w.truncate(end);
+  for (const [at, data] of files) {
+    await w.write({ type: 'write', position: end, data });
+    await setEntry(w, at, end, data.length);
+    last = end + data.length; end = align(last);
+  }
+  for (const [at, o, s] of resets) await setEntry(w, at, o, s);
+  const t = new DataView(new ArrayBuffer(4)); t.setUint32(0, last, true);   // the archive's length
   await w.write({ type: 'write', position: 4, data: t.buffer });
   await w.close();
-  m.applied = { names: !!want.names, squads: want.squads || false };
-  const mw = await (await dir.getFileHandle(MARK, { create: true })).createWritable();
-  await mw.write(JSON.stringify(m)); await mw.close();
+  m.applied = { names: !!want.names, squads: want.squads || false, legends: !!want.legends };
+  await saveMark();
   return target;
 }`;
 
-// want: 'status' | 'original' | { names, squads }. Returns the state afterwards: 'original', 'names',
-// 'squads@<version>', 'names+squads@<version>', 'unknown' or 'no-game' (compare with stateFor).
+// want: 'status' | 'original' | { names, squads, legends }. Returns the state afterwards: 'original', 'names',
+// 'squads@<version>', 'names+squads@<version>+legends' and so on, 'unknown' or 'no-game' (compare with stateFor).
+// Legends teams need the current squads.
 function names(win, want) {
-  if (typeof want === 'object') want = { names: !!want.names, squads: want.squads ? SQ_VER : false };
+  if (typeof want === 'object') want = { names: !!want.names, squads: want.squads ? SQ_VER : false, legends: !!(want.squads && want.legends) };
+  const lib = `({ applySquads: ${applySquads.toString()}, legendsPatch: ${legendsPatch.toString()} })`;
   return win.webContents.executeJavaScript(
-    `(${PAGE_JS})(${JSON.stringify(NAMES)}, ${JSON.stringify(SQUADS)}, ${applySquads.toString()}, ${JSON.stringify(want)})`);
+    `(${PAGE_JS})(${JSON.stringify(NAMES)}, ${JSON.stringify(SQUADS)}, ${lib}, ${JSON.stringify(want)})`);
 }
-const stateFor = (want) => [want.names && 'names', want.squads && 'squads@' + SQ_VER].filter(Boolean).join('+') || 'original';
+const stateFor = (want) => [want.names && 'names', want.squads && 'squads@' + SQ_VER, want.squads && want.legends && 'legends']
+  .filter(Boolean).join('+') || 'original';
 
 module.exports = { names, stateFor, COUNT: NAMES.length };

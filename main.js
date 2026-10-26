@@ -43,11 +43,15 @@ const ENGINE_DIR = () => userFile('engine');
 // ---------------------------------------------------------------- settings
 
 const SETTINGS = () => userFile('settings.json');
-const DEFAULTS = { realNames: true, squads2026: false, fxaa: true, aniso: true, mips: true, sharpen: true, vivid: false, wide: true, msaa: true, upscale: true, auto: true, fps: false, skipIntro: true, autoUpdate: true };
+const DEFAULTS = { realNames: true, squads2026: false, legends2006: false, fxaa: true, aniso: true, mips: true, sharpen: true, vivid: false, wide: true, msaa: true, upscale: true, auto: true, fps: false, skipIntro: true, autoUpdate: true };
 const settings = () => { try { return { ...DEFAULTS, ...JSON.parse(fs.readFileSync(SETTINGS(), 'utf8')) }; } catch { return { ...DEFAULTS }; } };
 const saveSettings = (s) => fs.writeFileSync(SETTINGS(), JSON.stringify(s, null, 2));
-const gfxQuery = (s) => [s.fxaa ? '' : 'fxaa=0', s.aniso ? '' : 'aniso=0', s.mips ? '' : 'mips=0',
-  s.sharpen ? '' : 'sharpen=0', s.vivid ? 'vivid=1' : '', s.wide ? 'wide=1' : '', s.msaa ? 'msaa=1' : '', s.upscale ? 'upscale=1' : '',
+// Engines from 26 Oct 2026 have their own widescreen, on unless ?4x3. It draws the bar under the mini-screen too
+// long, so the app asks for 4:3 and keeps its own widescreen (enhance.js). Widescreen off: the engine letterboxes
+// its 4:3 picture in a canvas of the window's shape (stage=1).
+const engineWide = () => { try { return fs.readFileSync(path.join(ENGINE_DIR(), 'c07.js'), 'utf8').includes('C07_WIDESCREEN'); } catch { return false; } };
+const gfxQuery = (s, native = engineWide()) => [s.fxaa ? '' : 'fxaa=0', s.aniso ? '' : 'aniso=0', s.mips ? '' : 'mips=0',
+  s.sharpen ? '' : 'sharpen=0', s.vivid ? 'vivid=1' : '', native ? (s.wide ? '4x3&wide=1' : 'stage=1&4x3') : s.wide ? 'wide=1' : '', s.msaa ? 'msaa=1' : '', s.upscale ? 'upscale=1' : '',
   s.auto ? (s.autoLevel ? `level=${s.autoLevel}` : '') : 'auto=0', s.fps ? 'fps=1' : ''].filter(Boolean).join('&');
 // settings that switch while the game runs (the others apply when the game starts)
 const LIVE = {
@@ -93,6 +97,9 @@ function adapt(rel, buf) {
     text = text.replace(
       /canvas\.width = Math\.max\(640, Math\.round\(r\.width \* dpr\)\);\s*canvas\.height = Math\.max\(480, Math\.round\(r\.height \* dpr\)\);/,
       'const sc = window.c07Enhance?.scale || 1;\n  canvas.height = Math.max(480, Math.round(r.height * dpr * sc));\n  canvas.width = window.c07Enhance?.wide ? Math.max(640, Math.round(r.width * dpr * sc)) : Math.max(640, Math.round(canvas.height * 4 / 3));');
+    // newer engines: the canvas keeps its box's shape; only the resolution scale ("Keep the game smooth") is added
+    text = text.replace('const w = Math.max(1, r.width * dpr), h = Math.max(1, r.height * dpr)',
+      'const sc = window.c07Enhance?.scale || 1, w = Math.max(1, r.width * dpr * sc), h = Math.max(1, r.height * dpr * sc)');
   } else return buf;
   return Buffer.from(text);
 }
@@ -221,7 +228,7 @@ async function applyIntroSetting() {
 
 async function applyNamesSetting() {
   try {
-    const s = settings(), want = { names: !!s.realNames, squads: !!s.squads2026 };
+    const s = settings(), want = { names: !!s.realNames, squads: !!s.squads2026, legends: !!s.legends2006 };
     if ((await names(win, 'status')) !== stateFor(want)) {
       await win.webContents.executeJavaScript(`document.getElementById('status') && (document.getElementById('status').textContent = 'Updating players…'); 0`);
       await names(win, want);
