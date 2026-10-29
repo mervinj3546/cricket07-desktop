@@ -4,7 +4,7 @@
 // This app contains no game code or game files. On first launch it loads the port's page and engine
 // from the site, the same way a browser does, and keeps a copy of everything (the page files here, the
 // game files in the page's own storage). After that it plays offline.
-const { app, BrowserWindow, protocol, net, shell, Menu, powerSaveBlocker, ipcMain, screen } = require('electron');
+const { app, BrowserWindow, protocol, net, shell, Menu, powerSaveBlocker, ipcMain, screen, session } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const saves = require('./saves');
@@ -62,6 +62,15 @@ const LIVE = {
   fps: (v) => `window.c07Enhance.fps = ${v}`,
 };
 const MAC = process.platform === 'darwin';
+
+// Links from the game's page (which comes from a website) open in the browser, but only web links: anything
+// else (file:, custom protocols) could start other programs on the computer.
+const openWebLink = (url) => {
+  try { if (['https:', 'http:'].includes(new URL(url).protocol)) shell.openExternal(url); } catch {}
+};
+// Requests from the page the game doesn't need are refused (Electron grants them all by default).
+const DENIED = new Set(['media', 'geolocation', 'notifications', 'midi', 'midiSysex', 'openExternal', 'display-capture',
+  'clipboard-read', 'hid', 'serial', 'usb', 'idle-detection', 'window-management', 'speaker-selection']);
 
 // ---------------------------------------------------------------- serving the page
 
@@ -278,7 +287,11 @@ function createWindow() {
     backgroundColor: '#000000', title: 'Cricket 07',
     webPreferences: { contextIsolation: true, sandbox: true, backgroundThrottling: false },
   });
-  win.webContents.setWindowOpenHandler(({ url }) => { shell.openExternal(url); return { action: 'deny' }; });
+  win.webContents.setWindowOpenHandler(({ url }) => { openWebLink(url); return { action: 'deny' }; });
+  // the game window only ever shows the app's own pages
+  win.webContents.on('will-navigate', (e) => {
+    if (!e.url.startsWith(`${SCHEME}://app/`)) { e.preventDefault(); openWebLink(e.url); }
+  });
 
   // Quit in the game's own menu stops the game but leaves its last frame on screen; close the app instead.
   win.webContents.on('console-message', (e) => {
@@ -390,13 +403,19 @@ const TOAST_JS = (text) => `(() => {
 let engineBusy = false, engineError = null;
 const updateInfo = () => ({ appVersion: app.getVersion(), ...updates.readState(), engineBusy, engineError });
 
-ipcMain.handle('settings:get', () => ({ values: settings(), applied, platform: process.platform, updates: updateInfo() }));
-ipcMain.handle('settings:set', (_e, key, value) => {
-  if (!(key in DEFAULTS)) return;
+// only the Settings window may use these (the game window has no bridge, but check anyway)
+const fromSettings = (e) => !!settingsWin && e.sender === settingsWin.webContents;
+ipcMain.handle('settings:get', (e) => {
+  if (!fromSettings(e)) return null;
+  return { values: settings(), applied, platform: process.platform, updates: updateInfo() };
+});
+ipcMain.handle('settings:set', (e, key, value) => {
+  if (!fromSettings(e) || !Object.hasOwn(DEFAULTS, key)) return;
   saveSettings({ ...settings(), [key]: !!value, ...(key === 'auto' ? { autoLevel: 0 } : {}) });
   if (LIVE[key]) win?.webContents.executeJavaScript(`window.c07Enhance && (${LIVE[key](!!value)})`).catch(() => {});
 });
-ipcMain.handle('settings:action', async (_e, name) => {
+ipcMain.handle('settings:action', async (e, name) => {
+  if (!fromSettings(e)) return;
   const close = () => settingsWin?.close();
   switch (name) {
     case 'close': return close();
@@ -407,7 +426,11 @@ ipcMain.handle('settings:action', async (_e, name) => {
     case 'restore': close(); return saves.restore(win, startGame);
     case 'backups': return saves.showBackups();
     case 'update-check': await updates.check(engineInfo()).catch(() => {}); return updateInfo();
-    case 'update-download': { const u = updates.readState().app?.url; if (u) shell.openExternal(u); return; }
+    case 'update-download': {
+      const u = updates.readState().app?.url;
+      if (typeof u === 'string' && u.startsWith('https://github.com/')) shell.openExternal(u);
+      return;
+    }
     case 'update-engine': {
       if (engineBusy) return updateInfo();
       engineBusy = true; engineError = null;
@@ -479,6 +502,7 @@ if (!app.requestSingleInstanceLock()) app.exit(0);
 app.on('second-instance', () => { if (win) { if (win.isMinimized()) win.restore(); win.show(); win.focus(); } });
 
 app.whenReady().then(() => {
+  session.defaultSession.setPermissionRequestHandler((_wc, permission, done) => done(!DENIED.has(permission)));
   protocol.handle(SCHEME, (request) => handle(request).catch((err) => new Response(String(err), { status: 503, headers: ISOLATION })));
   buildMenu();
   createWindow();
