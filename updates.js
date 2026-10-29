@@ -116,9 +116,20 @@ async function updateEngine(engine, files, onProgress = () => {}) {
   const prev = engine.dir + '.previous';
   fs.rmSync(prev, { recursive: true, force: true });
   if (fs.existsSync(engine.dir)) fs.renameSync(engine.dir, prev);
+  else fs.mkdirSync(prev, { recursive: true });
   if (fs.existsSync(engine.manifest)) fs.copyFileSync(engine.manifest, path.join(prev, '.manifest.json'));
-  fs.renameSync(path.join(tmp, '.manifest.json'), engine.manifest);
-  fs.renameSync(tmp, engine.dir);
+  try {
+    // on Windows a rename can fail while another program (an antivirus scan) has a file open
+    fs.renameSync(tmp, engine.dir);
+    fs.renameSync(path.join(engine.dir, '.manifest.json'), engine.manifest);
+  } catch (err) {
+    // put the previous engine and its game-file list back, so the game still matches what was kept
+    fs.rmSync(engine.dir, { recursive: true, force: true });
+    if (fs.existsSync(path.join(prev, 'index.html'))) fs.renameSync(prev, engine.dir);
+    const oldManifest = path.join(engine.dir, '.manifest.json');
+    if (fs.existsSync(oldManifest)) fs.renameSync(oldManifest, engine.manifest);
+    throw new Error("the new files couldn't be put in place. Close other programs and try again.");
+  }
   const s = readState();
   s.engine = { available: false, changed: [] };
   s.announcedEngine = false;
